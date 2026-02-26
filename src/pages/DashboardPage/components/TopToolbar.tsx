@@ -143,21 +143,29 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
             <ChevronDown size={14} />
           </button>
 
-          <ul
+          <div
             tabIndex={0}
-            className="dropdown-content menu z-[9999] mt-2 max-h-80 w-52 overflow-auto rounded-box bg-base-100 p-2 shadow-xl ring-1 ring-base-300"
+            className="dropdown-content z-[9999] mt-2 w-[42rem] rounded-box bg-base-100 p-3 shadow-xl ring-1 ring-base-300"
           >
-            {daisyThemes.map((theme) => (
-              <li key={theme}>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+              Themes
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {daisyThemes.map((theme) => (
                 <button
-                  className={selectedTheme === theme ? "active" : ""}
+                  key={theme}
+                  className={`rounded-md border px-2 py-1.5 text-left text-xs transition ${
+                    selectedTheme === theme
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-base-300 hover:bg-base-200"
+                  }`}
                   onClick={() => handleThemeChange(theme)}
                 >
                   {theme}
                 </button>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
