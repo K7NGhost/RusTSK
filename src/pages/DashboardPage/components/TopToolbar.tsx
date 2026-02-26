@@ -10,9 +10,10 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NavLink } from "react-router-dom";
 
 type Props = {
-  onAddDataSourceClick: () => void;
+  onAddDataSourceClick?: () => void;
 };
 
 const topMenus = ["File", "Edit", "View", "Tools", "Window", "Help"];
@@ -70,7 +71,7 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
   };
 
   return (
-    <header className="border-b border-base-300 bg-base-100/95 backdrop-blur">
+    <header className="relative z-[200] overflow-visible border-b border-base-300 bg-base-100/95 backdrop-blur">
       <div className="border-b border-base-300 px-4">
         <nav className="flex h-9 items-center gap-1" aria-label="Main menu">
           {topMenus.map((menu) => (
@@ -84,7 +85,7 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
         </nav>
       </div>
 
-      <div className="flex min-h-16 items-center gap-3 px-4">
+      <div className="relative z-[210] flex min-h-16 items-center gap-3 overflow-visible px-4">
         <div className="flex min-w-40 items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.12)]" />
           <h1 className="text-lg font-bold tracking-wide text-base-content">
@@ -92,14 +93,32 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
           </h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1">
-          <button
-            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm"
-            onClick={onAddDataSourceClick}
+        <div className="tabs tabs-boxed">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}
           >
-            <Database size={16} />
-            Add Data Source
-          </button>
+            Dashboard
+          </NavLink>
+          <NavLink
+            to="/artifacts"
+            className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}
+          >
+            Artifacts
+          </NavLink>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1">
+          {onAddDataSourceClick ? (
+            <button
+              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm"
+              onClick={onAddDataSourceClick}
+            >
+              <Database size={16} />
+              Add Data Source
+            </button>
+          ) : null}
           <button className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm">
             <Image size={16} />
             Images/Videos
@@ -117,7 +136,7 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
             Generate Report
           </button>
         </div>
-        <div className="dropdown dropdown-end">
+        <div className="dropdown dropdown-end relative z-[220]">
           <button tabIndex={0} className="btn btn-sm btn-outline gap-1.5">
             <Palette size={16} />
             {selectedTheme}
@@ -126,7 +145,7 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
 
           <ul
             tabIndex={0}
-            className="dropdown-content menu z-50 mt-2 max-h-80 w-52 overflow-auto rounded-box bg-base-100 p-2 shadow-xl ring-1 ring-base-300"
+            className="dropdown-content menu z-[9999] mt-2 max-h-80 w-52 overflow-auto rounded-box bg-base-100 p-2 shadow-xl ring-1 ring-base-300"
           >
             {daisyThemes.map((theme) => (
               <li key={theme}>

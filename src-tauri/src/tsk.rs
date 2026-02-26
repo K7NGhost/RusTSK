@@ -137,6 +137,23 @@ impl Fs {
         unsafe { tsk_sys::tsk_fs_dir_close(dir) };
         Ok(entries)
     }
+
+    pub fn list_artifacts(&self, path: &str) -> Result<Vec<ArtifactRecord>, TskError> {
+        let entries = self.list_dir(path)?;
+        let artifacts = entries
+            .into_iter()
+            .filter(|entry| entry.name != "." && entry.name != "..")
+            .map(|entry| ArtifactRecord {
+                id: format!("INODE-{}", entry.meta_addr),
+                name: entry.name.clone(),
+                kind: classify_artifact_kind(&entry.name, entry.is_dir),
+                status: "Indexed".to_string(),
+                inode: entry.meta_addr,
+                source_path: path.to_string(),
+            })
+            .collect();
+        Ok(artifacts)
+    }
 }
 
 impl Drop for Fs {
@@ -152,4 +169,39 @@ pub struct DirEntry {
     pub name: String,
     pub meta_addr: u64,
     pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactRecord {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub status: String,
+    pub inode: u64,
+    pub source_path: String,
+}
+
+fn classify_artifact_kind(name: &str, is_dir: bool) -> String {
+    if is_dir {
+        return "Directory".to_string();
+    }
+
+    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    if matches!(
+        ext.as_str(),
+        "txt" | "log" | "pdf" | "doc" | "docx" | "xls" | "xlsx" | "json" | "csv"
+    ) {
+        return "Document".to_string();
+    }
+    if matches!(
+        ext.as_str(),
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "heic"
+    ) {
+        return "Image".to_string();
+    }
+    if matches!(ext.as_str(), "zip" | "rar" | "7z" | "tar" | "gz") {
+        return "Archive".to_string();
+    }
+
+    "Binary".to_string()
 }
