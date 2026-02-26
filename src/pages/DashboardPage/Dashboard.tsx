@@ -20,11 +20,14 @@ const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
 );
 
 const Dashboard = () => {
-  const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] = useState(false);
+  const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] =
+    useState(false);
 
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
-      <TopToolbar onAddDataSourceClick={() => setIsAddDataSourceModalOpen(true)} />
+      <TopToolbar
+        onAddDataSourceClick={() => setIsAddDataSourceModalOpen(true)}
+      />
 
       <div className="min-h-0 flex-1 p-1">
         <Group orientation="horizontal">

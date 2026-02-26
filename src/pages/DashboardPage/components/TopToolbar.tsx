@@ -87,7 +87,9 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
       <div className="flex min-h-16 items-center gap-3 px-4">
         <div className="flex min-w-40 items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.12)]" />
-          <h1 className="text-lg font-bold tracking-wide text-base-content">Cultivator</h1>
+          <h1 className="text-lg font-bold tracking-wide text-base-content">
+            Cultivator
+          </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1">
@@ -115,30 +117,29 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
             Generate Report
           </button>
         </div>
-          <div className="dropdown dropdown-end">
-            <button tabIndex={0} className="btn btn-sm btn-outline gap-1.5">
-              <Palette size={16} />
-              {selectedTheme}
-              <ChevronDown size={14} />
-            </button>
+        <div className="dropdown dropdown-end">
+          <button tabIndex={0} className="btn btn-sm btn-outline gap-1.5">
+            <Palette size={16} />
+            {selectedTheme}
+            <ChevronDown size={14} />
+          </button>
 
-            <ul
-              tabIndex={0}
-              className="dropdown-content menu z-50 mt-2 max-h-80 w-52 overflow-auto rounded-box bg-base-100 p-2 shadow-xl ring-1 ring-base-300"
-            >
-              {daisyThemes.map((theme) => (
-                <li key={theme}>
-                  <button
-                    className={selectedTheme === theme ? "active" : ""}
-                    onClick={() => handleThemeChange(theme)}
-                  >
-                    {theme}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu z-50 mt-2 max-h-80 w-52 overflow-auto rounded-box bg-base-100 p-2 shadow-xl ring-1 ring-base-300"
+          >
+            {daisyThemes.map((theme) => (
+              <li key={theme}>
+                <button
+                  className={selectedTheme === theme ? "active" : ""}
+                  onClick={() => handleThemeChange(theme)}
+                >
+                  {theme}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <div className="ml-auto flex items-center gap-2">
           <button className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
