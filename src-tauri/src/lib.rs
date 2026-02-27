@@ -1,3 +1,4 @@
+pub mod postgres;
 pub mod tsk;
 pub mod tsk_sys;
 
@@ -12,8 +13,18 @@ fn list_dir(image_path: String, offset: i64, path: String) -> Result<Vec<tsk::Di
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-    .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(err) = postgres::start_embedded_postgres(&app_handle) {
+                    eprintln!("embedded postgres startup failed: {err}");
+                }
+            });
+            Ok(())
+        })
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![list_dir])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

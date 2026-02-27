@@ -1,3 +1,12 @@
+Use pgAdmin 4 to view the database server
+For your current setup, connect with:
+
+Host: 127.0.0.1
+Port: 55432
+User: postgres
+Password: (leave blank, you’re using trust auth)
+Database: postgres
+
 The database will be a server the app starts up when the app itself starts up. The database is a postgres database to be able to add concurrent writes to the database.
 
 ### PostgreSQL will be used for the app over sqlite because
