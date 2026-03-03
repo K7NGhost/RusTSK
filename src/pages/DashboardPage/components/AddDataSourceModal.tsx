@@ -11,6 +11,7 @@ import type { DataSourceType } from "./add-data-source-steps/Step2SelectDataSour
 type Props = {
   isOpen: boolean;
   onClose: () => void;
+  onAddDiskImage: (imagePath: string) => void | Promise<void>;
 };
 
 const steps = [
@@ -21,15 +22,17 @@ const steps = [
   "Add data source",
 ];
 
-const AddDataSourceModal = ({ isOpen, onClose }: Props) => {
+const AddDataSourceModal = ({ isOpen, onClose, onAddDiskImage }: Props) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [dataSourceType, setDataSourceType] = useState<DataSourceType>(
     "disk-image-or-vm-file",
   );
+  const [diskImagePath, setDiskImagePath] = useState("E:\\");
 
   useEffect(() => {
     if (!isOpen) {
       setCurrentStep(0);
+      setDiskImagePath("E:\\");
     }
   }, [isOpen]);
 
@@ -93,14 +96,22 @@ const AddDataSourceModal = ({ isOpen, onClose }: Props) => {
             <section className="flex-1">
               <h4 className="mb-3 text-base font-semibold">{stepTitle}</h4>
 
-              {currentStep === 0 && <Step1SelectHost dataSourceName="Demo_HD.E01" />}
+              {currentStep === 0 && (
+                <Step1SelectHost dataSourceName="Demo_HD.E01" />
+              )}
               {currentStep === 1 && (
                 <Step2SelectDataSourceType
                   selectedType={dataSourceType}
                   onChange={setDataSourceType}
                 />
               )}
-              {currentStep === 2 && <Step3SelectDataSource dataSourceType={dataSourceType} />}
+              {currentStep === 2 && (
+                <Step3SelectDataSource
+                  dataSourceType={dataSourceType}
+                  path={diskImagePath}
+                  onPathChange={setDiskImagePath}
+                />
+              )}
               {currentStep === 3 && <Step4ConfigureIngest />}
               {currentStep === 4 && <Step5AddDataSource />}
             </section>
@@ -129,7 +140,15 @@ const AddDataSourceModal = ({ isOpen, onClose }: Props) => {
                 Next
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={onClose}>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  if (dataSourceType === "disk-image-or-vm-file") {
+                    await onAddDiskImage(diskImagePath);
+                  }
+                  onClose();
+                }}
+              >
                 Add Data Source
               </button>
             )}

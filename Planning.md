@@ -298,7 +298,7 @@ Every artifact stores:
 - Case Service
 - Evidence access (images + logical folders)
 - Single-worker ingest pipeline
-- SQLite artifact store (Postgres-ready schema)
+postgres- SQLite artifact store (Postgres-ready schema)
 - Basic plugin framework
 - File tree, keyword search, timeline
 - Report generation

@@ -4,12 +4,11 @@ import type { DataSourceType } from "./Step2SelectDataSourceType";
 
 type Props = {
   dataSourceType: DataSourceType;
+  path: string;
+  onPathChange: (value: string) => void;
 };
 
-const Step3SelectDataSource = ({ dataSourceType }: Props) => {
-  const initialPath =
-    localStorage.getItem("cultivator-active-image-path") ?? "E:\\";
-  const [path, setPath] = useState(initialPath);
+const Step3SelectDataSource = ({ dataSourceType, path, onPathChange }: Props) => {
   const [ignoreOrphanFiles, setIgnoreOrphanFiles] = useState(false);
   const [timezone, setTimezone] = useState("(GMT-5:00) America/New_York");
   const [sectorSize, setSectorSize] = useState("Auto Detect");
@@ -25,7 +24,7 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
     });
 
     if (typeof selected === "string") {
-      setPath(selected);
+      onPathChange(selected);
       localStorage.setItem("cultivator-active-image-path", selected);
     }
   };
@@ -34,7 +33,11 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
     return (
       <div className="space-y-3">
         <p className="text-sm text-base-content/70">
-          Step 3 options for <span className="font-semibold">{dataSourceType.replace(/-/g, " ")}</span> will be configured here.
+          Step 3 options for{" "}
+          <span className="font-semibold">
+            {dataSourceType.replace(/-/g, " ")}
+          </span>{" "}
+          will be configured here.
         </p>
         <div className="rounded-box border border-base-300 bg-base-200/30 p-4 text-sm text-base-content/70">
           Select "disk image or vm file" in Step 2 to see image-file properties.
@@ -55,11 +58,15 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
             value={path}
             onChange={(event) => {
               const nextPath = event.target.value;
-              setPath(nextPath);
+              onPathChange(nextPath);
               localStorage.setItem("cultivator-active-image-path", nextPath);
             }}
           />
-          <button className="btn btn-outline" type="button" onClick={handleBrowse}>
+          <button
+            className="btn btn-outline"
+            type="button"
+            onClick={handleBrowse}
+          >
             Browse
           </button>
         </div>
@@ -72,7 +79,9 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
           checked={ignoreOrphanFiles}
           onChange={(event) => setIgnoreOrphanFiles(event.target.checked)}
         />
-        <span className="label-text">Ignore orphan files in FAT file systems</span>
+        <span className="label-text">
+          Ignore orphan files in FAT file systems
+        </span>
       </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -138,7 +147,8 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
         </label>
 
         <p className="text-xs text-base-content/70">
-          NOTE: These values will not be validated when the data source is added.
+          NOTE: These values will not be validated when the data source is
+          added.
         </p>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { useCaseContext } from "../../features/case-service/context/CaseContext";
+import type { DirectorySelection } from "../../features/case-service/dataSourceTypes";
 import AddDataSourceModal from "./components/AddDataSourceModal";
 import ContentViewer from "./components/ContentViewer";
 import ResultViewer from "./components/ResultViewer";
@@ -20,20 +22,32 @@ const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
 );
 
 const Dashboard = () => {
+  const { activeCase, dataSources, addDiskImageDataSource } = useCaseContext();
   const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] =
     useState(false);
+  const [selectedDirectory, setSelectedDirectory] =
+    useState<DirectorySelection | null>(null);
 
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
       <TopToolbar
         onAddDataSourceClick={() => setIsAddDataSourceModalOpen(true)}
       />
+      {activeCase && (
+        <div className="px-3 py-1 text-xs text-base-content/70">
+          Active case: <span className="font-semibold">{activeCase.name}</span>{" "}
+          ({activeCase.casePath})
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 p-1">
         <Group orientation="horizontal">
           <Panel defaultSize={24} minSize={16}>
             <div className="h-full p-1">
-              <TreeViewer />
+              <TreeViewer
+                dataSources={dataSources}
+                onDirectorySelected={setSelectedDirectory}
+              />
             </div>
           </Panel>
 
@@ -43,7 +57,10 @@ const Dashboard = () => {
             <Group orientation="vertical">
               <Panel defaultSize={58} minSize={30}>
                 <div className="h-full p-1">
-                  <ResultViewer />
+                  <ResultViewer
+                    dataSources={dataSources}
+                    selectedDirectory={selectedDirectory}
+                  />
                 </div>
               </Panel>
 
@@ -62,6 +79,7 @@ const Dashboard = () => {
       <AddDataSourceModal
         isOpen={isAddDataSourceModalOpen}
         onClose={() => setIsAddDataSourceModalOpen(false)}
+        onAddDiskImage={addDiskImageDataSource}
       />
     </div>
   );
