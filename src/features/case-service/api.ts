@@ -1,5 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 import type { CaseStartupPayload, CaseSummary } from "./types";
+import type { DataSourceTree } from "./dataSourceTypes";
 
 const CONNECTION_URL_CANDIDATES = [
   "postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable",
@@ -20,6 +21,11 @@ type DbCaseRow = {
   schemaName: string;
   createdAt: string;
   openedAt: string | null;
+};
+
+type DbEvidenceTreeRow = {
+  sourcePath: string;
+  treeJson: string | null;
 };
 
 function sqlEscape(value: string): string {
@@ -181,6 +187,17 @@ async function ensureSchema(): Promise<void> {
     );
   `);
   await execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS evidence_sources_case_path_uidx
+    ON case_service.evidence_sources (case_id, source_path);
+  `);
+  await execute(`
+    CREATE TABLE IF NOT EXISTS case_service.evidence_source_trees (
+      evidence_source_id TEXT PRIMARY KEY REFERENCES case_service.evidence_sources(id) ON DELETE CASCADE,
+      tree_json TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await execute(`
     CREATE TABLE IF NOT EXISTS case_service.ingest_jobs (
       id TEXT PRIMARY KEY,
       case_id TEXT NOT NULL REFERENCES case_service.cases(id) ON DELETE CASCADE,
@@ -321,4 +338,70 @@ export async function openCase(caseIdOrPath: string): Promise<CaseSummary> {
     throw new Error(`case not found for '${caseIdOrPath}'`);
   }
   return mapCaseRow(rows[0]);
+}
+
+export async function upsertCaseDataSourceTree(
+  caseId: string,
+  tree: DataSourceTree,
+): Promise<void> {
+  await ensureSchema();
+
+  const safeCaseId = sqlEscape(caseId);
+  const safeSourcePath = sqlEscape(tree.image_path);
+  const safeDisplayName = sqlEscape(tree.image_name || tree.image_path);
+  const sourceId = nowId("src");
+  const treeJson = sqlEscape(JSON.stringify(tree));
+
+  const sourceRows = await select<{ id: string }[]>(`
+    INSERT INTO case_service.evidence_sources (id, case_id, source_type, source_path, display_name)
+    VALUES ('${sourceId}', '${safeCaseId}', 'disk-image', '${safeSourcePath}', '${safeDisplayName}')
+    ON CONFLICT (case_id, source_path) DO UPDATE
+      SET display_name = EXCLUDED.display_name
+    RETURNING id;
+  `);
+
+  const evidenceSourceId = sourceRows[0]?.id;
+  if (!evidenceSourceId) {
+    throw new Error("Failed to upsert evidence source record");
+  }
+
+  const safeEvidenceSourceId = sqlEscape(evidenceSourceId);
+  await execute(`
+    INSERT INTO case_service.evidence_source_trees (evidence_source_id, tree_json, updated_at)
+    VALUES ('${safeEvidenceSourceId}', '${treeJson}', NOW())
+    ON CONFLICT (evidence_source_id) DO UPDATE
+      SET tree_json = EXCLUDED.tree_json,
+          updated_at = NOW();
+  `);
+}
+
+export async function getCaseDataSourceTrees(
+  caseId: string,
+): Promise<DataSourceTree[]> {
+  await ensureSchema();
+
+  const safeCaseId = sqlEscape(caseId);
+  const rows = await select<DbEvidenceTreeRow[]>(`
+    SELECT es.source_path AS "sourcePath",
+           est.tree_json AS "treeJson"
+    FROM case_service.evidence_sources es
+    LEFT JOIN case_service.evidence_source_trees est
+      ON est.evidence_source_id = es.id
+    WHERE es.case_id = '${safeCaseId}'
+    ORDER BY es.created_at ASC;
+  `);
+
+  const trees: DataSourceTree[] = [];
+  for (const row of rows) {
+    if (!row.treeJson) {
+      continue;
+    }
+    try {
+      trees.push(JSON.parse(row.treeJson) as DataSourceTree);
+    } catch {
+      // Ignore malformed entries and continue loading remaining sources.
+    }
+  }
+
+  return trees;
 }

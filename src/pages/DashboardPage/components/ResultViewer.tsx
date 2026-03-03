@@ -1,27 +1,9 @@
 import { File } from "lucide-react";
 import { useMemo } from "react";
-
-type FileEntry = {
-  name: string;
-  path: string;
-  parent_path: string;
-  meta_addr: number;
-};
-
-type FileSystemTree = {
-  id: string;
-  label: string;
-  offset: number;
-  fs_type: string;
-  folders: Array<unknown>;
-  files: FileEntry[];
-};
-
-type DataSourceTree = {
-  image_path: string;
-  image_name: string;
-  filesystems: FileSystemTree[];
-};
+import type {
+  DataSourceTree,
+  DirectorySelection,
+} from "../../../features/case-service/dataSourceTypes";
 
 type FileRow = {
   sourceName: string;
@@ -31,12 +13,6 @@ type FileRow = {
   fileName: string;
   filePath: string;
   parentPath: string;
-};
-
-type DirectorySelection = {
-  sourceImagePath: string;
-  filesystemId: string;
-  path: string;
 };
 
 type Props = {

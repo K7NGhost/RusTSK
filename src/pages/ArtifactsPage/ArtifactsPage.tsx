@@ -21,6 +21,7 @@ import type { LucideIcon } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useCaseContext } from "../../features/case-service/context/CaseContext";
 import TopToolbar from "../DashboardPage/components/TopToolbar";
 import reactLogo from "../../assets/react.svg";
 
@@ -207,11 +208,11 @@ const buildArtifactFilePath = (artifact: ArtifactRecord): string => {
 };
 
 const ArtifactsPage = () => {
+  const { activeCase, activeImagePath, setActiveImagePath } = useCaseContext();
   const [dataMode, setDataMode] = useState<DataMode>("test");
   const [query, setQuery] = useState("");
   const [selectedModel, setSelectedModel] = useState<ModelId>("all");
   const [selectedCategory, setSelectedCategory] = useState<ArtifactCategory | "All Categories">("All Categories");
-  const [imagePath, setImagePath] = useState(localStorage.getItem("cultivator-active-image-path") ?? "");
   const [directoryPath, setDirectoryPath] = useState("/");
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<ArtifactRecord[]>([]);
@@ -222,7 +223,7 @@ const ArtifactsPage = () => {
   const [failedMediaPreviews, setFailedMediaPreviews] = useState<Record<string, boolean>>({});
 
   const loadArtifacts = async () => {
-    if (!imagePath.trim()) {
+    if (!activeImagePath.trim()) {
       setErrorMessage("Set a disk image path first.");
       setRows([]);
       return;
@@ -231,7 +232,7 @@ const ArtifactsPage = () => {
     setErrorMessage(null);
     try {
       const entries = await invoke<ArtifactRecord[]>("list_artifacts", {
-        image_path: imagePath,
+        image_path: activeImagePath,
         offset,
         path: directoryPath,
       });
@@ -374,6 +375,12 @@ const ArtifactsPage = () => {
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
       <TopToolbar />
+      {activeCase && (
+        <div className="px-3 py-1 text-xs text-base-content/70">
+          Active case: <span className="font-semibold">{activeCase.name}</span>{" "}
+          ({activeCase.casePath})
+        </div>
+      )}
 
       <main className="min-h-0 flex-1 p-2 sm:p-4">
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4">
@@ -392,11 +399,11 @@ const ArtifactsPage = () => {
 
           {dataMode === "real" ? (
             <div className="mb-4 grid gap-2 rounded-lg border border-base-300 p-2 sm:gap-3 sm:p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_120px_180px_auto]">
-              <input className="input input-bordered input-sm w-full" value={imagePath} onChange={(event) => { const next = event.target.value; setImagePath(next); localStorage.setItem("cultivator-active-image-path", next); }} placeholder="Disk image path (e.g. C:\\evidence\\disk.E01)" />
+              <input className="input input-bordered input-sm w-full" value={activeImagePath} onChange={(event) => setActiveImagePath(event.target.value)} placeholder="Disk image path (e.g. C:\\evidence\\disk.E01)" />
               <input className="input input-bordered input-sm w-full" value={offset} onChange={(event) => setOffset(Number(event.target.value || 0))} type="number" min={0} placeholder="Offset" />
               <input className="input input-bordered input-sm w-full" value={directoryPath} onChange={(event) => setDirectoryPath(event.target.value)} placeholder="Filesystem path (e.g. /)" />
               <div className="flex flex-wrap justify-end gap-2 xl:justify-start">
-                <button className="btn btn-outline btn-xs sm:btn-sm" type="button" onClick={async () => { const selected = await open({ multiple: false, directory: false, title: "Select disk image" }); if (typeof selected === "string") { setImagePath(selected); localStorage.setItem("cultivator-active-image-path", selected); } }}>Browse</button>
+                <button className="btn btn-outline btn-xs sm:btn-sm" type="button" onClick={async () => { const selected = await open({ multiple: false, directory: false, title: "Select disk image" }); if (typeof selected === "string") { setActiveImagePath(selected); } }}>Browse</button>
                 <button className="btn btn-primary btn-xs sm:btn-sm" type="button" onClick={() => void loadArtifacts()} disabled={isLoading}>{isLoading ? "Loading..." : "Reload"}</button>
               </div>
             </div>

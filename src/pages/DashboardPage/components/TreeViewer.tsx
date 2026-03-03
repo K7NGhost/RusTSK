@@ -13,6 +13,11 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import type {
+  DataSourceTree,
+  DirectorySelection,
+  FolderNode,
+} from "../../../features/case-service/dataSourceTypes";
 
 const treeLabel = (icon: React.ReactNode, label: string) => (
   <Box
@@ -25,41 +30,6 @@ const treeLabel = (icon: React.ReactNode, label: string) => (
     </Typography>
   </Box>
 );
-
-type DirectorySelection = {
-  sourceImagePath: string;
-  filesystemId: string;
-  path: string;
-};
-
-type FolderNode = {
-  name: string;
-  path: string;
-  meta_addr: number;
-  children: FolderNode[];
-};
-
-type FileEntry = {
-  name: string;
-  path: string;
-  parent_path: string;
-  meta_addr: number;
-};
-
-type FileSystemTree = {
-  id: string;
-  label: string;
-  offset: number;
-  fs_type: string;
-  folders: FolderNode[];
-  files: FileEntry[];
-};
-
-type DataSourceTree = {
-  image_path: string;
-  image_name: string;
-  filesystems: FileSystemTree[];
-};
 
 type Props = {
   dataSources: DataSourceTree[];

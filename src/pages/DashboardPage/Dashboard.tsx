@@ -1,48 +1,12 @@
 import { useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { invoke } from "@tauri-apps/api/core";
-import CaseStartupModal from "../../features/case-service/components/CaseStartupModal";
-import type { CaseSummary } from "../../features/case-service/types";
+import { useCaseContext } from "../../features/case-service/context/CaseContext";
+import type { DirectorySelection } from "../../features/case-service/dataSourceTypes";
 import AddDataSourceModal from "./components/AddDataSourceModal";
 import ContentViewer from "./components/ContentViewer";
 import ResultViewer from "./components/ResultViewer";
 import TopToolbar from "./components/TopToolbar";
 import TreeViewer from "./components/TreeViewer";
-
-type FolderNode = {
-  name: string;
-  path: string;
-  meta_addr: number;
-  children: FolderNode[];
-};
-
-type FileEntry = {
-  name: string;
-  path: string;
-  parent_path: string;
-  meta_addr: number;
-};
-
-type FileSystemTree = {
-  id: string;
-  label: string;
-  offset: number;
-  fs_type: string;
-  folders: FolderNode[];
-  files: FileEntry[];
-};
-
-type DataSourceTree = {
-  image_path: string;
-  image_name: string;
-  filesystems: FileSystemTree[];
-};
-
-type DirectorySelection = {
-  sourceImagePath: string;
-  filesystemId: string;
-  path: string;
-};
 
 const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
   <Separator
@@ -58,30 +22,14 @@ const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
 );
 
 const Dashboard = () => {
+  const { activeCase, dataSources, addDiskImageDataSource } = useCaseContext();
   const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] =
     useState(false);
-  const [activeCase, setActiveCase] = useState<CaseSummary | null>(null);
-  const [dataSources, setDataSources] = useState<DataSourceTree[]>([]);
   const [selectedDirectory, setSelectedDirectory] =
     useState<DirectorySelection | null>(null);
 
-  const handleAddDiskImage = async (imagePath: string) => {
-    const tree = await invoke<DataSourceTree>("discover_disk_image_tree", {
-      imagePath,
-    });
-
-    setDataSources((previous) => {
-      const withoutCurrent = previous.filter(
-        (source) => source.image_path !== tree.image_path,
-      );
-      return [...withoutCurrent, tree];
-    });
-  };
-
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
-      <CaseStartupModal isOpen={!activeCase} onCaseSelected={setActiveCase} />
-
       <TopToolbar
         onAddDataSourceClick={() => setIsAddDataSourceModalOpen(true)}
       />
@@ -131,7 +79,7 @@ const Dashboard = () => {
       <AddDataSourceModal
         isOpen={isAddDataSourceModalOpen}
         onClose={() => setIsAddDataSourceModalOpen(false)}
-        onAddDiskImage={handleAddDiskImage}
+        onAddDiskImage={addDiskImageDataSource}
       />
     </div>
   );
