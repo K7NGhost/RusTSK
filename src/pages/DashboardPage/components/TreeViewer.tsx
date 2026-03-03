@@ -14,6 +14,26 @@ import {
   Users,
 } from "lucide-react";
 
+export type ExplorerTreeNode = {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children: ExplorerTreeNode[];
+};
+
+export type ExplorerDataSource = {
+  id: string;
+  name: string;
+  sourceType: string;
+  sourcePath: string;
+  nodes: ExplorerTreeNode[];
+  error?: string;
+};
+
+type Props = {
+  dataSources?: ExplorerDataSource[];
+};
+
 const treeLabel = (icon: React.ReactNode, label: string) => (
   <Box
     sx={{ display: "flex", alignItems: "center", gap: 1 }}
@@ -26,7 +46,26 @@ const treeLabel = (icon: React.ReactNode, label: string) => (
   </Box>
 );
 
-const TreeViewer = () => {
+const treeNodeId = (prefix: string, path: string, index: number) =>
+  `${prefix}-${index}-${path.replace(/\\/g, "/")}`;
+
+const renderNode = (node: ExplorerTreeNode, prefix: string, index: number): React.ReactNode => {
+  const nodeId = treeNodeId(prefix, node.path, index);
+  const icon = node.isDir ? <Folder size={16} /> : <File size={16} />;
+  if (!node.isDir || node.children.length === 0) {
+    return <TreeItem key={nodeId} itemId={nodeId} label={treeLabel(icon, node.name)} />;
+  }
+
+  return (
+    <TreeItem key={nodeId} itemId={nodeId} label={treeLabel(icon, node.name)}>
+      {node.children.map((child, childIndex) =>
+        renderNode(child, `${prefix}-${index}`, childIndex),
+      )}
+    </TreeItem>
+  );
+};
+
+const TreeViewer = ({ dataSources = [] }: Props) => {
   return (
     <Paper
       className="h-full overflow-hidden rounded-xl bg-base-100 ring-1 ring-base-300 shadow-2xl"
@@ -49,37 +88,47 @@ const TreeViewer = () => {
               color: "inherit",
             },
           }}
-          defaultExpandedItems={["data", "demo", "views", "results", "exif"]}
+          defaultExpandedItems={["data", "views", "results", "exif"]}
         >
           <TreeItem
             itemId="data"
             label={treeLabel(<FolderTree size={16} />, "Data Sources")}
           >
-            <TreeItem
-              itemId="demo"
-              label={treeLabel(<HardDrive size={16} />, "Demo_HD.E01")}
-            >
+            {dataSources.length === 0 ? (
               <TreeItem
-                itemId="logical"
-                label={treeLabel(<Folder size={16} />, "LogicalFileSet1 (1)")}
+                itemId="data-empty"
+                label={treeLabel(<File size={16} />, "No data sources added")}
               />
-              <TreeItem
-                itemId="small1"
-                label={treeLabel(<File size={16} />, "small2.img")}
-              />
-              <TreeItem
-                itemId="small2"
-                label={treeLabel(<File size={16} />, "small2.img")}
-              />
-              <TreeItem
-                itemId="outlook"
-                label={treeLabel(<File size={16} />, "outlook.dd")}
-              />
-              <TreeItem
-                itemId="cache"
-                label={treeLabel(<File size={16} />, "mtd1_cache.bin")}
-              />
-            </TreeItem>
+            ) : (
+              dataSources.map((dataSource, dataSourceIndex) => (
+                <TreeItem
+                  key={dataSource.id}
+                  itemId={`data-source-${dataSource.id}`}
+                  label={treeLabel(<HardDrive size={16} />, dataSource.name)}
+                >
+                  {dataSource.error && (
+                    <TreeItem
+                      itemId={`data-source-${dataSource.id}-error`}
+                      label={treeLabel(<File size={16} />, `Error: ${dataSource.error}`)}
+                    />
+                  )}
+                  {dataSource.nodes.length === 0 ? (
+                    <TreeItem
+                      itemId={`data-source-${dataSource.id}-empty`}
+                      label={treeLabel(<File size={16} />, dataSource.sourcePath)}
+                    />
+                  ) : (
+                    dataSource.nodes.map((node, nodeIndex) =>
+                      renderNode(
+                        node,
+                        `data-source-${dataSource.id}-${dataSourceIndex}`,
+                        nodeIndex,
+                      ),
+                    )
+                  )}
+                </TreeItem>
+              ))
+            )}
           </TreeItem>
 
           <TreeItem

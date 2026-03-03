@@ -1,17 +1,14 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw, Trash2 } from "lucide-react";
+import type { DataSourceEntry } from "../../../../hooks/useDataSources";
 
 type HostMode = "generate" | "specify" | "existing";
 
 type Props = {
-  dataSourceName?: string;
+  dataSources?: DataSourceEntry[];
+  onHostNameChange?: (name: string) => void;
+  onDeleteDataSource?: (dataSourceId: string) => void;
 };
-
-const existingHosts = [
-  "investigation-host-01",
-  "forensic-workstation",
-  "mobile-analysis-node",
-  "evidence-ingest-server",
-];
 
 const normalizeHostName = (value: string) =>
   value
@@ -20,15 +17,70 @@ const normalizeHostName = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "new-host";
 
-const Step1SelectHost = ({ dataSourceName = "data-source.dd" }: Props) => {
+const randomSuffix = () =>
+  Math.random().toString(36).slice(2, 9);
+
+const Step1SelectHost = ({
+  dataSources = [],
+  onHostNameChange,
+  onDeleteDataSource,
+}: Props) => {
   const [hostMode, setHostMode] = useState<HostMode>("generate");
   const [specifiedHostName, setSpecifiedHostName] = useState("");
-  const [existingHost, setExistingHost] = useState(existingHosts[0]);
+  const [existingDataSource, setExistingDataSource] = useState<string>("");
+  const [suffix, setSuffix] = useState(randomSuffix);
+
+  const regenerate = useCallback(() => setSuffix(randomSuffix()), []);
 
   const generatedHostName = useMemo(
-    () => normalizeHostName(dataSourceName.replace(/\.[^/.]+$/, "")),
-    [dataSourceName],
+    () => `data_source-${suffix}`,
+    [suffix],
   );
+
+  // Keep existing selection in sync when the data source list changes.
+  useEffect(() => {
+    if (dataSources.length === 0) {
+      setExistingDataSource("");
+      return;
+    }
+    if (!dataSources.find((entry) => entry.name === existingDataSource)) {
+      setExistingDataSource(dataSources[0].name);
+    }
+  }, [dataSources, existingDataSource]);
+
+  // Propagate the effective host name whenever it changes.
+  useEffect(() => {
+    if (!onHostNameChange) return;
+    if (hostMode === "generate") onHostNameChange(generatedHostName);
+    else if (hostMode === "specify")
+      onHostNameChange(normalizeHostName(specifiedHostName) || generatedHostName);
+    else if (hostMode === "existing")
+      onHostNameChange(
+        dataSources.some((entry) => entry.name === existingDataSource)
+          ? existingDataSource
+          : "",
+      );
+  }, [
+    hostMode,
+    generatedHostName,
+    specifiedHostName,
+    existingDataSource,
+    dataSources,
+    onHostNameChange,
+  ]);
+
+  const selectedExistingDataSource = dataSources.find(
+    (entry) => entry.name === existingDataSource,
+  );
+
+  const handleDeleteSelectedDataSource = () => {
+    if (!selectedExistingDataSource || !onDeleteDataSource) return;
+    const confirmed = window.confirm(
+      `Delete data source "${selectedExistingDataSource.name}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    onDeleteDataSource(selectedExistingDataSource.id);
+  };
 
   return (
     <div className="space-y-4">
@@ -43,14 +95,28 @@ const Step1SelectHost = ({ dataSourceName = "data-source.dd" }: Props) => {
             name="host-mode"
             className="radio radio-primary"
             checked={hostMode === "generate"}
-            onChange={() => setHostMode("generate")}
+            onChange={() => {
+              setHostMode("generate");
+              regenerate();
+            }}
           />
           <span className="label-text">Generate new host name based on data source name</span>
         </label>
 
         {hostMode === "generate" && (
           <div className="rounded-box border border-base-300 bg-base-200/30 p-3 text-sm">
-            <div className="font-medium">Generated host name</div>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Generated host name</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs gap-1"
+                onClick={regenerate}
+                title="Generate a new name"
+              >
+                <RefreshCw size={12} />
+                Regenerate
+              </button>
+            </div>
             <div className="mt-1 font-mono text-base-content/80">{generatedHostName}</div>
           </div>
         )}
@@ -83,21 +149,41 @@ const Step1SelectHost = ({ dataSourceName = "data-source.dd" }: Props) => {
             checked={hostMode === "existing"}
             onChange={() => setHostMode("existing")}
           />
-          <span className="label-text">Use existing host</span>
+          <span className="label-text">Use existing data source</span>
         </label>
 
         {hostMode === "existing" && (
-          <select
-            className="select select-bordered w-full"
-            value={existingHost}
-            onChange={(event) => setExistingHost(event.target.value)}
-          >
-            {existingHosts.map((host) => (
-              <option key={host} value={host}>
-                {host}
-              </option>
-            ))}
-          </select>
+          <>
+            {dataSources.length === 0 ? (
+              <div className="rounded-box border border-base-300 bg-base-200/30 p-3 text-sm text-base-content/60">
+                No data sources found. Add a data source first to create one.
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <select
+                  className="select select-bordered w-full"
+                  value={existingDataSource}
+                  onChange={(event) => setExistingDataSource(event.target.value)}
+                >
+                  {dataSources.map((entry) => (
+                    <option key={entry.id} value={entry.name}>
+                      {entry.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-error btn-sm"
+                  onClick={handleDeleteSelectedDataSource}
+                  disabled={!selectedExistingDataSource}
+                  title="Delete selected data source"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

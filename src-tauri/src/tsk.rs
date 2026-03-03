@@ -137,6 +137,88 @@ impl Fs {
         unsafe { tsk_sys::tsk_fs_dir_close(dir) };
         Ok(entries)
     }
+
+    pub fn list_dir_tree(
+        &self,
+        root_path: &str,
+        max_depth: usize,
+        max_entries: usize,
+    ) -> Result<DirTreeNode, TskError> {
+        let normalized_root = if root_path.trim().is_empty() {
+            "/"
+        } else {
+            root_path
+        };
+        let mut visited = 0usize;
+        self.build_tree_recursive(normalized_root, 0, max_depth, max_entries, &mut visited)
+    }
+
+    fn build_tree_recursive(
+        &self,
+        current_path: &str,
+        depth: usize,
+        max_depth: usize,
+        max_entries: usize,
+        visited: &mut usize,
+    ) -> Result<DirTreeNode, TskError> {
+        let mut node = DirTreeNode {
+            name: path_name(current_path),
+            path: current_path.to_string(),
+            is_dir: true,
+            children: Vec::new(),
+        };
+
+        if depth >= max_depth || *visited >= max_entries {
+            return Ok(node);
+        }
+
+        let entries = self.list_dir(current_path)?;
+        for entry in entries {
+            if entry.name == "." || entry.name == ".." {
+                continue;
+            }
+            if *visited >= max_entries {
+                break;
+            }
+            *visited += 1;
+
+            let child_path = join_fs_path(current_path, &entry.name);
+            if entry.is_dir {
+                match self.build_tree_recursive(
+                    &child_path,
+                    depth + 1,
+                    max_depth,
+                    max_entries,
+                    visited,
+                ) {
+                    Ok(mut child) => {
+                        child.name = entry.name;
+                        child.path = child_path;
+                        child.is_dir = true;
+                        node.children.push(child);
+                    }
+                    Err(_) => {
+                        // Keep the directory visible even if traversal fails deeper.
+                        node.children.push(DirTreeNode {
+                            name: entry.name,
+                            path: child_path,
+                            is_dir: true,
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            } else {
+                node.children.push(DirTreeNode {
+                    name: entry.name,
+                    path: child_path,
+                    is_dir: false,
+                    children: Vec::new(),
+                });
+            }
+        }
+
+        Ok(node)
+    }
 }
 
 impl Drop for Fs {
@@ -152,4 +234,32 @@ pub struct DirEntry {
     pub name: String,
     pub meta_addr: u64,
     pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DirTreeNode {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Vec<DirTreeNode>,
+}
+
+fn join_fs_path(parent: &str, child: &str) -> String {
+    if parent == "/" {
+        format!("/{}", child)
+    } else {
+        format!("{}/{}", parent.trim_end_matches('/'), child)
+    }
+}
+
+fn path_name(path: &str) -> String {
+    if path == "/" {
+        "/".to_string()
+    } else {
+        path.trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path)
+            .to_string()
+    }
 }
