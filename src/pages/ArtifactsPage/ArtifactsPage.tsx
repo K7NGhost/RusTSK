@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import TopToolbar from "../DashboardPage/components/TopToolbar";
 import reactLogo from "../../assets/react.svg";
@@ -73,15 +73,15 @@ type MessageItem = {
 
 type DetailItem = { label: string; value: string };
 
-const ResizeHandle = () => (
+const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
   <Separator
     style={{
       background: "hsl(var(--bc) / 0.18)",
-      width: 6,
-      height: "100%",
-      cursor: "col-resize",
+      width: horizontal ? "100%" : 6,
+      height: horizontal ? 6 : "100%",
+      cursor: horizontal ? "row-resize" : "col-resize",
       borderRadius: 4,
-      margin: "0 4px",
+      margin: horizontal ? "4px 0" : "0 4px",
     }}
   />
 );
@@ -197,6 +197,15 @@ const getMediaKind = (name: string): MediaKind | null => {
   return null;
 };
 
+const buildArtifactFilePath = (artifact: ArtifactRecord): string => {
+  const normalizedSource = artifact.source_path.trim();
+  if (!normalizedSource) return artifact.name;
+  if (normalizedSource.toLowerCase().endsWith(artifact.name.toLowerCase())) return normalizedSource;
+  const separator = normalizedSource.includes("\\") && !normalizedSource.includes("/") ? "\\" : "/";
+  const needsSeparator = !normalizedSource.endsWith("/") && !normalizedSource.endsWith("\\");
+  return `${normalizedSource}${needsSeparator ? separator : ""}${artifact.name}`;
+};
+
 const ArtifactsPage = () => {
   const [dataMode, setDataMode] = useState<DataMode>("test");
   const [query, setQuery] = useState("");
@@ -210,7 +219,7 @@ const ArtifactsPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null);
   const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
-  const [isControlCompact, setIsControlCompact] = useState(false);
+  const [failedMediaPreviews, setFailedMediaPreviews] = useState<Record<string, boolean>>({});
 
   const loadArtifacts = async () => {
     if (!imagePath.trim()) {
@@ -291,7 +300,18 @@ const ArtifactsPage = () => {
 
   const mediaArtifacts = useMemo<MediaArtifact[]>(() => filteredArtifacts
     .filter((artifact) => artifact.category === "Media")
-    .map((artifact) => ({ ...artifact, mediaKind: getMediaKind(artifact.name) ?? "image", previewSrc: reactLogo })), [filteredArtifacts]);
+    .map((artifact) => {
+      const mediaKind = getMediaKind(artifact.name) ?? "image";
+      if (dataMode !== "real") return { ...artifact, mediaKind, previewSrc: reactLogo };
+      const rawPath = buildArtifactFilePath(artifact);
+      let previewSrc = reactLogo;
+      try {
+        previewSrc = convertFileSrc(rawPath);
+      } catch {
+        previewSrc = reactLogo;
+      }
+      return { ...artifact, mediaKind, previewSrc };
+    }), [dataMode, filteredArtifacts]);
 
   const isPreviewCategory = selectedCategory !== "All Categories";
 
@@ -348,38 +368,36 @@ const ArtifactsPage = () => {
   const showMediaPreview = selectedCategory === "Media" && mediaArtifacts.length > 0;
 
   useEffect(() => {
-    if (!showMediaPreview) {
-      setIsControlCompact(false);
-    }
-  }, [showMediaPreview]);
+    setFailedMediaPreviews({});
+  }, [mediaArtifacts]);
 
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
       <TopToolbar />
 
-      <main className="min-h-0 flex-1 p-4">
-        <section className="flex h-full min-h-0 flex-col rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <h2 className="text-xl font-semibold text-base-content">Artifacts</h2>
+      <main className="min-h-0 flex-1 p-2 sm:p-4">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4">
+          <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+            <h2 className="text-lg font-semibold text-base-content sm:text-xl">Artifacts</h2>
             <span className="badge badge-neutral">{filteredArtifacts.length} shown</span>
-            <div className="join ml-1">
-              <button type="button" className={`btn join-item btn-sm ${dataMode === "test" ? "btn-primary" : "btn-outline"}`} onClick={() => setDataMode("test")}>Test Data</button>
-              <button type="button" className={`btn join-item btn-sm ${dataMode === "real" ? "btn-primary" : "btn-outline"}`} onClick={() => setDataMode("real")}>Real Data</button>
+            <div className="join">
+              <button type="button" className={`btn join-item btn-xs sm:btn-sm ${dataMode === "test" ? "btn-primary" : "btn-outline"}`} onClick={() => setDataMode("test")}>Test Data</button>
+              <button type="button" className={`btn join-item btn-xs sm:btn-sm ${dataMode === "real" ? "btn-primary" : "btn-outline"}`} onClick={() => setDataMode("real")}>Real Data</button>
             </div>
-            <label className="ml-auto flex items-center gap-2 rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content/60">
+            <label className="flex w-full items-center gap-2 rounded-md border border-base-300 bg-base-100 px-2 py-1.5 text-base-content/60 sm:ml-auto sm:w-auto sm:px-3 sm:py-2">
               <Search size={16} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} className="w-52 border-none bg-transparent text-sm text-base-content outline-none" placeholder="Search ID, name, inode..." />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 w-full border-none bg-transparent text-xs text-base-content outline-none sm:w-52 sm:text-sm" placeholder="Search ID, name, inode..." />
             </label>
           </div>
 
           {dataMode === "real" ? (
-            <div className="mb-4 grid gap-3 rounded-lg border border-base-300 p-3 md:grid-cols-[1fr_160px_220px_auto]">
+            <div className="mb-4 grid gap-2 rounded-lg border border-base-300 p-2 sm:gap-3 sm:p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_120px_180px_auto]">
               <input className="input input-bordered input-sm w-full" value={imagePath} onChange={(event) => { const next = event.target.value; setImagePath(next); localStorage.setItem("cultivator-active-image-path", next); }} placeholder="Disk image path (e.g. C:\\evidence\\disk.E01)" />
               <input className="input input-bordered input-sm w-full" value={offset} onChange={(event) => setOffset(Number(event.target.value || 0))} type="number" min={0} placeholder="Offset" />
               <input className="input input-bordered input-sm w-full" value={directoryPath} onChange={(event) => setDirectoryPath(event.target.value)} placeholder="Filesystem path (e.g. /)" />
-              <div className="flex gap-2">
-                <button className="btn btn-outline btn-sm" type="button" onClick={async () => { const selected = await open({ multiple: false, directory: false, title: "Select disk image" }); if (typeof selected === "string") { setImagePath(selected); localStorage.setItem("cultivator-active-image-path", selected); } }}>Browse</button>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => void loadArtifacts()} disabled={isLoading}>{isLoading ? "Loading..." : "Reload"}</button>
+              <div className="flex flex-wrap justify-end gap-2 xl:justify-start">
+                <button className="btn btn-outline btn-xs sm:btn-sm" type="button" onClick={async () => { const selected = await open({ multiple: false, directory: false, title: "Select disk image" }); if (typeof selected === "string") { setImagePath(selected); localStorage.setItem("cultivator-active-image-path", selected); } }}>Browse</button>
+                <button className="btn btn-primary btn-xs sm:btn-sm" type="button" onClick={() => void loadArtifacts()} disabled={isLoading}>{isLoading ? "Loading..." : "Reload"}</button>
               </div>
             </div>
           ) : (
@@ -388,24 +406,24 @@ const ArtifactsPage = () => {
 
           {errorMessage ? <div className="alert alert-error mb-4 py-2 text-sm">{errorMessage}</div> : null}
 
-          <div className="mb-4 grid gap-2 md:grid-cols-5">
+          <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
             {models.map((model) => {
               const modelCount = categorizedRows.filter((row) => model.categories.includes(row.category)).length;
               return (
-                <button key={model.id} type="button" onClick={() => { setSelectedModel(model.id); setSelectedCategory("All Categories"); }} className={`rounded-lg border text-left transition ${isControlCompact ? "p-2" : "p-3"} ${selectedModel === model.id ? "border-primary bg-primary/10" : "border-base-300 bg-base-100 hover:bg-base-200/60"}`}>
+                <button key={model.id} type="button" onClick={() => { setSelectedModel(model.id); setSelectedCategory("All Categories"); }} className={`min-w-[180px] shrink-0 rounded-lg border p-2 text-left transition ${selectedModel === model.id ? "border-primary bg-primary/10" : "border-base-300 bg-base-100 hover:bg-base-200/60"}`}>
                   <div className="text-xs uppercase tracking-wide text-base-content/60">Model</div>
-                  <div className={isControlCompact ? "text-xs font-semibold" : "text-sm font-semibold"}>{model.title}</div>
-                  <div className={`${isControlCompact ? "mt-0.5" : "mt-1"} text-xs text-base-content/70`}>{modelCount} artifacts</div>
+                  <div className="text-xs font-semibold">{model.title}</div>
+                  <div className="mt-0.5 text-[11px] text-base-content/70">{modelCount} artifacts</div>
                 </button>
               );
             })}
           </div>
 
-          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-            <button type="button" className={`rounded-lg border text-left ${isControlCompact ? "p-2" : "p-3"} ${selectedCategory === "All Categories" ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200/60"}`} onClick={() => setSelectedCategory("All Categories")}>
+          <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+            <button type="button" className={`min-w-[170px] shrink-0 rounded-lg border p-2 text-left ${selectedCategory === "All Categories" ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200/60"}`} onClick={() => setSelectedCategory("All Categories")}>
               <div className="text-xs uppercase tracking-wide text-base-content/60">Category</div>
-              <div className={isControlCompact ? "text-xs font-semibold" : "text-sm font-semibold"}>All Categories</div>
-              <div className={`${isControlCompact ? "mt-0.5" : "mt-1"} text-xs text-base-content/70`}>{modelFilteredRows.length} artifacts</div>
+              <div className="truncate text-xs font-semibold">All Categories</div>
+              <div className="mt-0.5 text-[11px] text-base-content/70">{modelFilteredRows.length} artifacts</div>
             </button>
             {categoryMeta.map((category) => {
               if (!modelCategorySet.has(category.id)) return null;
@@ -413,22 +431,46 @@ const ArtifactsPage = () => {
               if (count === 0) return null;
               const Icon = category.icon;
               return (
-                <button key={category.id} type="button" className={`rounded-lg border text-left ${isControlCompact ? "p-2" : "p-3"} ${selectedCategory === category.id ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200/60"}`} onClick={() => setSelectedCategory(category.id)}>
-                  <div className={`${isControlCompact ? "mb-0.5" : "mb-1"} flex items-center gap-2`}><Icon size={14} /><span className={isControlCompact ? "text-xs font-semibold" : "text-sm font-semibold"}>{category.id}</span></div>
-                  <div className="text-xs text-base-content/70">{count} artifacts</div>
+                <button key={category.id} type="button" className={`min-w-[170px] shrink-0 rounded-lg border p-2 text-left ${selectedCategory === category.id ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200/60"}`} onClick={() => setSelectedCategory(category.id)}>
+                  <div className="mb-0.5 flex items-center gap-1.5"><Icon size={13} /><span className="truncate text-xs font-semibold">{category.id}</span></div>
+                  <div className="text-[11px] text-base-content/70">{count} artifacts</div>
                 </button>
               );
             })}
           </div>
 
           {activeMedia ? (
-            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-6">
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-3 sm:p-6">
               <div className="relative w-full max-w-5xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
                 <button type="button" className="btn btn-sm btn-circle absolute right-3 top-3 z-10" onClick={() => setActiveMediaIndex(null)}><X size={14} /></button>
-                <div className="grid min-h-[420px] md:grid-cols-[64px_1fr_64px]">
+                <div className="grid min-h-[320px] sm:min-h-[420px] md:grid-cols-[64px_1fr_64px]">
                   <button type="button" className="btn btn-ghost h-full rounded-none" onClick={() => setActiveMediaIndex((prev) => (prev === null ? null : (prev - 1 + mediaArtifacts.length) % mediaArtifacts.length))}><ChevronLeft size={22} /></button>
                   <div className="flex min-h-[420px] items-center justify-center bg-base-200 p-4">
-                    {activeMedia.mediaKind === "image" ? <img src={activeMedia.previewSrc} alt={activeMedia.name} className="max-h-[70vh] w-auto max-w-full rounded-md object-contain" /> : <div className="flex h-[60vh] w-full max-w-3xl items-center justify-center rounded-md bg-slate-900 text-white"><div className="flex items-center gap-2 text-lg"><Play size={18} />Video Preview</div></div>}
+                    {activeMedia.mediaKind === "image" ? (
+                      failedMediaPreviews[`${activeMedia.id}-${activeMedia.inode}`] ? (
+                        <div className="flex h-[60vh] w-full max-w-3xl items-center justify-center rounded-md bg-base-300/60 text-sm text-base-content/70">
+                          Unable to load image preview
+                        </div>
+                      ) : (
+                        <img
+                          src={activeMedia.previewSrc}
+                          alt={activeMedia.name}
+                          className="max-h-[70vh] w-auto max-w-full rounded-md object-contain"
+                          onError={() => setFailedMediaPreviews((prev) => ({ ...prev, [`${activeMedia.id}-${activeMedia.inode}`]: true }))}
+                        />
+                      )
+                    ) : failedMediaPreviews[`${activeMedia.id}-${activeMedia.inode}`] ? (
+                      <div className="flex h-[60vh] w-full max-w-3xl items-center justify-center rounded-md bg-slate-900 text-white">
+                        <div className="flex items-center gap-2 text-lg"><Play size={18} />Unable to load video preview</div>
+                      </div>
+                    ) : (
+                      <video
+                        src={activeMedia.previewSrc}
+                        controls
+                        className="max-h-[70vh] w-full max-w-4xl rounded-md bg-black"
+                        onError={() => setFailedMediaPreviews((prev) => ({ ...prev, [`${activeMedia.id}-${activeMedia.inode}`]: true }))}
+                      />
+                    )}
                   </div>
                   <button type="button" className="btn btn-ghost h-full rounded-none" onClick={() => setActiveMediaIndex((prev) => (prev === null ? null : (prev + 1) % mediaArtifacts.length))}><ChevronRight size={22} /></button>
                 </div>
@@ -439,135 +481,114 @@ const ArtifactsPage = () => {
 
           <div className="min-h-0 flex-1">
             {showMediaPreview ? (
-              <Group orientation="vertical">
-                <Panel defaultSize={36} minSize={36} maxSize={36}>
-                  <div className="h-full overflow-auto rounded-lg border border-base-300 p-3">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Image size={16} />
-                      <h3 className="text-sm font-semibold">Media Preview</h3>
-                      <span className="badge badge-sm">{mediaArtifacts.length}</span>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {mediaArtifacts.map((artifact) => (
-                        <article
-                          key={`media-${artifact.id}-${artifact.name}`}
-                          className="cursor-pointer overflow-hidden rounded-lg border border-base-300 bg-base-100 transition hover:border-primary/60"
-                          onClick={() => {
-                            const index = mediaArtifacts.findIndex(
-                              (item) => item.id === artifact.id && item.inode === artifact.inode,
-                            );
-                            setActiveMediaIndex(index >= 0 ? index : 0);
-                          }}
-                        >
-                          <div className="relative h-28 bg-base-200">
-                            {artifact.mediaKind === "image" ? (
+              <div className="flex h-full min-h-0 flex-col gap-2">
+                <div className="h-48 shrink-0 overflow-auto rounded-lg border border-base-300 p-3 sm:h-56">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Image size={16} />
+                    <h3 className="text-sm font-semibold">Media Preview</h3>
+                    <span className="badge badge-sm">{mediaArtifacts.length}</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {mediaArtifacts.map((artifact) => (
+                      <article
+                        key={`media-${artifact.id}-${artifact.name}`}
+                        className="cursor-pointer overflow-hidden rounded-lg border border-base-300 bg-base-100 transition hover:border-primary/60"
+                        onClick={() => {
+                          const index = mediaArtifacts.findIndex(
+                            (item) => item.id === artifact.id && item.inode === artifact.inode,
+                          );
+                          setActiveMediaIndex(index >= 0 ? index : 0);
+                        }}
+                      >
+                        <div className="relative h-24 bg-base-200 sm:h-28">
+                          {artifact.mediaKind === "image" ? (
+                            failedMediaPreviews[`${artifact.id}-${artifact.inode}`] ? (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-base-content/70">
+                                No preview
+                              </div>
+                            ) : (
                               <img
                                 src={artifact.previewSrc}
                                 alt={artifact.name}
                                 className="h-full w-full object-cover"
+                                onError={() => setFailedMediaPreviews((prev) => ({ ...prev, [`${artifact.id}-${artifact.inode}`]: true }))}
                               />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-slate-900 text-white">
-                                <Play size={20} />
-                              </div>
-                            )}
-                            <span className="badge badge-neutral badge-sm absolute right-2 top-2">
-                              {artifact.mediaKind === "image" ? "Image" : "Video"}
-                            </span>
-                          </div>
-                          <div className="p-2">
-                            <p className="truncate text-xs font-medium">{artifact.name}</p>
-                            <p className="truncate text-[11px] text-base-content/60">
-                              {artifact.source_path}
-                            </p>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                </Panel>
-
-                <Panel
-                  defaultSize={64}
-                  minSize={20}
-                  onResize={(size) => setIsControlCompact(Number(size) > 70)}
-                >
-                  {isPreviewCategory ? (
-                    <Group orientation="horizontal">
-                      <Panel defaultSize={68} minSize={45}>
-                        <div className="h-full overflow-auto rounded-lg border border-base-300">
-                          <table className="table table-zebra table-pin-rows">
-                            <thead>
-                              <tr><th>ID</th><th>Artifact</th><th>Category</th><th>Status</th><th>Inode</th><th>Path</th></tr>
-                            </thead>
-                            <tbody>
-                              {filteredArtifacts.map((artifact) => {
-                                const artifactKey = `${artifact.id}-${artifact.inode}`;
-                                return (
-                                  <tr key={artifactKey} className={`cursor-pointer ${selectedArtifactKey === artifactKey ? "bg-primary/10" : ""}`} onClick={() => setSelectedArtifactKey(artifactKey)}>
-                                    <td className="font-mono text-xs">{artifact.id}</td>
-                                    <td className="font-medium">{artifact.name}</td>
-                                    <td><span className="badge badge-outline">{artifact.category}</span></td>
-                                    <td><span className="badge badge-info badge-outline">{artifact.status}</span></td>
-                                    <td className="font-mono text-xs">{artifact.inode}</td>
-                                    <td className="font-mono text-xs">{artifact.source_path}</td>
-                                  </tr>
-                                );
-                              })}
-                              {!isLoading && filteredArtifacts.length === 0 ? <tr><td colSpan={6} className="py-8 text-center text-base-content/60">No artifacts found for this filter.</td></tr> : null}
-                            </tbody>
-                          </table>
+                            )
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-slate-900 text-white">
+                              <Play size={20} />
+                            </div>
+                          )}
+                          <span className="badge badge-neutral badge-sm absolute right-2 top-2">
+                            {artifact.mediaKind === "image" ? "Image" : "Video"}
+                          </span>
                         </div>
-                      </Panel>
+                        <div className="p-2">
+                          <p className="truncate text-xs font-medium">{artifact.name}</p>
+                          <p className="truncate text-[11px] text-base-content/60">
+                            {artifact.source_path}
+                          </p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
 
-                      <ResizeHandle />
+                <div className="min-h-0 flex-1">
+                  <Group orientation="horizontal" className="h-full min-h-0">
+                    <Panel defaultSize={68} minSize={45}>
+                      <div className="h-full overflow-auto rounded-lg border border-base-300">
+                        <table className="table table-zebra table-pin-rows">
+                          <thead>
+                            <tr><th>ID</th><th>Artifact</th><th>Category</th><th>Status</th><th>Inode</th><th>Path</th></tr>
+                          </thead>
+                          <tbody>
+                            {filteredArtifacts.map((artifact) => {
+                              const artifactKey = `${artifact.id}-${artifact.inode}`;
+                              return (
+                                <tr key={artifactKey} className={`cursor-pointer ${selectedArtifactKey === artifactKey ? "bg-primary/10" : ""}`} onClick={() => setSelectedArtifactKey(artifactKey)}>
+                                  <td className="font-mono text-xs">{artifact.id}</td>
+                                  <td className="font-medium">{artifact.name}</td>
+                                  <td><span className="badge badge-outline">{artifact.category}</span></td>
+                                  <td><span className="badge badge-info badge-outline">{artifact.status}</span></td>
+                                  <td className="font-mono text-xs">{artifact.inode}</td>
+                                  <td className="font-mono text-xs">{artifact.source_path}</td>
+                                </tr>
+                              );
+                            })}
+                            {!isLoading && filteredArtifacts.length === 0 ? <tr><td colSpan={6} className="py-8 text-center text-base-content/60">No artifacts found for this filter.</td></tr> : null}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Panel>
 
-                      <Panel defaultSize={32} minSize={20}>
-                        <aside className="flex h-full min-h-0 flex-col rounded-lg border border-base-300 bg-base-100">
-                          <div className="border-b border-base-300 px-4 py-3">
-                            <h3 className="text-sm font-semibold">Preview</h3>
-                          </div>
+                    <ResizeHandle />
 
-                          <div className="space-y-3 overflow-auto p-4 text-sm">
-                            {selectedArtifact ? (
-                              selectedGenericDetails.map((item) => (
-                                <div key={`media-preview-${item.label}`}>
-                                  <div className="text-xs uppercase text-base-content/60">{item.label}</div>
-                                  <div>{item.value}</div>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="text-base-content/60">Select an artifact to preview.</div>
-                            )}
-                          </div>
-                        </aside>
-                      </Panel>
-                    </Group>
-                  ) : (
-                    <div className="h-full overflow-auto rounded-lg border border-base-300">
-                      <table className="table table-zebra table-pin-rows">
-                        <thead>
-                          <tr><th>ID</th><th>Artifact</th><th>Category</th><th>Status</th><th>Inode</th><th>Path</th></tr>
-                        </thead>
-                        <tbody>
-                          {filteredArtifacts.map((artifact) => (
-                            <tr key={`${artifact.id}-${artifact.name}`}>
-                              <td className="font-mono text-xs">{artifact.id}</td>
-                              <td className="font-medium">{artifact.name}</td>
-                              <td><span className="badge badge-outline">{artifact.category}</span></td>
-                              <td><span className="badge badge-info badge-outline">{artifact.status}</span></td>
-                              <td className="font-mono text-xs">{artifact.inode}</td>
-                              <td className="font-mono text-xs">{artifact.source_path}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Panel>
-              </Group>
+                    <Panel defaultSize={32} minSize={20}>
+                      <aside className="flex h-full min-h-0 flex-col rounded-lg border border-base-300 bg-base-100">
+                        <div className="border-b border-base-300 px-4 py-3">
+                          <h3 className="text-sm font-semibold">Preview</h3>
+                        </div>
+
+                        <div className="space-y-3 overflow-auto p-4 text-sm">
+                          {selectedArtifact ? (
+                            selectedGenericDetails.map((item) => (
+                              <div key={`media-preview-${item.label}`}>
+                                <div className="text-xs uppercase text-base-content/60">{item.label}</div>
+                                <div>{item.value}</div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-base-content/60">Select an artifact to preview.</div>
+                          )}
+                        </div>
+                      </aside>
+                    </Panel>
+                  </Group>
+                </div>
+              </div>
             ) : isPreviewCategory ? (
-              <Group orientation="horizontal">
+              <Group orientation="horizontal" className="h-full min-h-0">
                 <Panel defaultSize={68} minSize={45}>
                   <div className="h-full overflow-auto rounded-lg border border-base-300">
                     <table className="table table-zebra table-pin-rows">

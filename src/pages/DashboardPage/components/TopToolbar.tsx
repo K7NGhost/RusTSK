@@ -73,7 +73,7 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
   return (
     <header className="relative z-[200] overflow-visible border-b border-base-300 bg-base-100/95 backdrop-blur">
       <div className="border-b border-base-300 px-4">
-        <nav className="flex h-9 items-center gap-1" aria-label="Main menu">
+        <nav className="flex h-9 items-center gap-1 overflow-x-auto" aria-label="Main menu">
           {topMenus.map((menu) => (
             <button
               key={menu}
@@ -85,15 +85,15 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
         </nav>
       </div>
 
-      <div className="relative z-[210] flex min-h-16 items-center gap-3 overflow-visible px-4">
-        <div className="flex min-w-40 items-center gap-2">
+      <div className="relative z-[210] flex min-h-16 flex-wrap items-center gap-2 overflow-visible px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.12)]" />
           <h1 className="text-lg font-bold tracking-wide text-base-content">
             Cultivator
           </h1>
         </div>
 
-        <div className="tabs tabs-boxed">
+        <div className="tabs tabs-boxed tabs-sm">
           <NavLink
             to="/"
             end
@@ -109,29 +109,29 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
           </NavLink>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1">
+        <div className="order-4 flex w-full flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1 xl:order-none xl:w-auto">
           {onAddDataSourceClick ? (
             <button
-              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-white hover:shadow-sm sm:px-2.5 sm:py-1.5 sm:text-sm"
               onClick={onAddDataSourceClick}
             >
               <Database size={16} />
               Add Data Source
             </button>
           ) : null}
-          <button className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm">
+          <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-white hover:shadow-sm sm:px-2.5 sm:py-1.5 sm:text-sm">
             <Image size={16} />
             Images/Videos
           </button>
-          <button className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm">
+          <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-white hover:shadow-sm sm:px-2.5 sm:py-1.5 sm:text-sm">
             <MessageSquare size={16} />
             Communications
           </button>
-          <button className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white hover:shadow-sm">
+          <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-white hover:shadow-sm sm:px-2.5 sm:py-1.5 sm:text-sm">
             <Clock3 size={16} />
             Timeline
           </button>
-          <button className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800">
+          <button className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-800 sm:px-2.5 sm:py-1.5 sm:text-sm">
             <FileOutput size={16} />
             Generate Report
           </button>
@@ -145,12 +145,12 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
 
           <div
             tabIndex={0}
-            className="dropdown-content z-[9999] mt-2 w-[42rem] rounded-box bg-base-100 p-3 shadow-xl ring-1 ring-base-300"
+            className="dropdown-content z-[9999] mt-2 w-[min(42rem,calc(100vw-2rem))] rounded-box bg-base-100 p-3 shadow-xl ring-1 ring-base-300"
           >
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
               Themes
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {daisyThemes.map((theme) => (
                 <button
                   key={theme}
@@ -168,17 +168,17 @@ const TopToolbar = ({ onAddDataSourceClick }: Props) => {
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <button className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+        <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <button className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 sm:px-2.5 sm:py-1.5 sm:text-sm">
             <ListFilter size={16} />
             Keyword Lists
           </button>
 
-          <label className="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-slate-500 shadow-sm transition focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200">
+          <label className="flex min-w-0 items-center gap-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-500 shadow-sm transition focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200 sm:px-2.5 sm:py-1.5">
             <Search size={15} />
             <input
               placeholder="Keyword Search..."
-              className="w-48 border-none bg-transparent text-sm text-slate-700 outline-none"
+              className="w-32 border-none bg-transparent text-xs text-slate-700 outline-none sm:w-48 sm:text-sm"
             />
           </label>
         </div>
