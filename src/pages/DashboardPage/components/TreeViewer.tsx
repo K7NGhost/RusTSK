@@ -26,7 +26,79 @@ const treeLabel = (icon: React.ReactNode, label: string) => (
   </Box>
 );
 
-const TreeViewer = () => {
+type DirectorySelection = {
+  sourceImagePath: string;
+  filesystemId: string;
+  path: string;
+};
+
+type FolderNode = {
+  name: string;
+  path: string;
+  meta_addr: number;
+  children: FolderNode[];
+};
+
+type FileEntry = {
+  name: string;
+  path: string;
+  parent_path: string;
+  meta_addr: number;
+};
+
+type FileSystemTree = {
+  id: string;
+  label: string;
+  offset: number;
+  fs_type: string;
+  folders: FolderNode[];
+  files: FileEntry[];
+};
+
+type DataSourceTree = {
+  image_path: string;
+  image_name: string;
+  filesystems: FileSystemTree[];
+};
+
+type Props = {
+  dataSources: DataSourceTree[];
+  onDirectorySelected: (selection: DirectorySelection) => void;
+};
+
+const renderFolderNode = (
+  node: FolderNode,
+  itemId: string,
+  sourceImagePath: string,
+  filesystemId: string,
+  onDirectorySelected: (selection: DirectorySelection) => void,
+) => (
+  <TreeItem
+    key={`${itemId}-${node.path}-${node.meta_addr}`}
+    itemId={`${itemId}-${node.path}-${node.meta_addr}`}
+    label={treeLabel(<Folder size={16} />, node.name)}
+    onClick={(event) => {
+      event.stopPropagation();
+      onDirectorySelected({
+        sourceImagePath,
+        filesystemId,
+        path: node.path,
+      });
+    }}
+  >
+    {node.children.map((child) =>
+      renderFolderNode(
+        child,
+        `${itemId}-${node.path}-${node.meta_addr}`,
+        sourceImagePath,
+        filesystemId,
+        onDirectorySelected,
+      ),
+    )}
+  </TreeItem>
+);
+
+const TreeViewer = ({ dataSources, onDirectorySelected }: Props) => {
   return (
     <Paper
       className="h-full overflow-hidden rounded-xl bg-base-100 ring-1 ring-base-300 shadow-2xl"
@@ -55,31 +127,49 @@ const TreeViewer = () => {
             itemId="data"
             label={treeLabel(<FolderTree size={16} />, "Data Sources")}
           >
-            <TreeItem
-              itemId="demo"
-              label={treeLabel(<HardDrive size={16} />, "Demo_HD.E01")}
-            >
+            {dataSources.map((source, sourceIndex) => (
               <TreeItem
-                itemId="logical"
-                label={treeLabel(<Folder size={16} />, "LogicalFileSet1 (1)")}
-              />
-              <TreeItem
-                itemId="small1"
-                label={treeLabel(<File size={16} />, "small2.img")}
-              />
-              <TreeItem
-                itemId="small2"
-                label={treeLabel(<File size={16} />, "small2.img")}
-              />
-              <TreeItem
-                itemId="outlook"
-                label={treeLabel(<File size={16} />, "outlook.dd")}
-              />
-              <TreeItem
-                itemId="cache"
-                label={treeLabel(<File size={16} />, "mtd1_cache.bin")}
-              />
-            </TreeItem>
+                key={source.image_path}
+                itemId={`source-${sourceIndex}`}
+                label={treeLabel(<HardDrive size={16} />, source.image_name)}
+              >
+                {source.filesystems.map((filesystem, fsIndex) => (
+                  <TreeItem
+                    key={`${source.image_path}-${filesystem.id}`}
+                    itemId={`source-${sourceIndex}-fs-${fsIndex}`}
+                    label={treeLabel(
+                      <Folder size={16} />,
+                      `${filesystem.label}${
+                        filesystem.fs_type ? ` [${filesystem.fs_type}]` : ""
+                      }`,
+                    )}
+                  >
+                    <TreeItem
+                      itemId={`source-${sourceIndex}-fs-${fsIndex}-root`}
+                      label={treeLabel(<Folder size={16} />, "Root (/)")}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDirectorySelected({
+                          sourceImagePath: source.image_path,
+                          filesystemId: filesystem.id,
+                          path: "/",
+                        });
+                      }}
+                    >
+                      {filesystem.folders.map((folder) =>
+                        renderFolderNode(
+                          folder,
+                          `source-${sourceIndex}-fs-${fsIndex}-folder`,
+                          source.image_path,
+                          filesystem.id,
+                          onDirectorySelected,
+                        ),
+                      )}
+                    </TreeItem>
+                  </TreeItem>
+                ))}
+              </TreeItem>
+            ))}
           </TreeItem>
 
           <TreeItem

@@ -6,7 +6,11 @@ fn postgres_runtime_files_are_present() {
 
     for rel in postgres::required_runtime_paths() {
         let path = root.join(rel);
-        assert!(path.exists(), "missing postgres runtime file: {}", path.display());
+        assert!(
+            path.exists(),
+            "missing postgres runtime file: {}",
+            path.display()
+        );
     }
 }
 
@@ -14,6 +18,6 @@ fn postgres_runtime_files_are_present() {
 fn postgres_connection_url_uses_embedded_port() {
     assert_eq!(
         postgres::postgres_connection_url(),
-        "postgresql://postgres@127.0.0.1:55432/postgres"
+        "postgres://postgres@127.0.0.1:55432/postgres"
     );
 }

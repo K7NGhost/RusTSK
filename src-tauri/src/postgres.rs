@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tauri::Manager;
@@ -39,7 +40,7 @@ pub fn required_runtime_paths() -> [&'static str; 4] {
 }
 
 pub fn postgres_connection_url() -> String {
-    format!("postgresql://postgres@127.0.0.1:{POSTGRES_PORT}/postgres")
+    format!("postgres://postgres@127.0.0.1:{POSTGRES_PORT}/postgres")
 }
 
 #[cfg(target_os = "windows")]
@@ -67,7 +68,8 @@ impl EmbeddedPostgres {
             }
         }
 
-        let app_data_dir = normalize_windows_path(app.path().app_data_dir().map_err(io::Error::other)?);
+        let app_data_dir =
+            normalize_windows_path(app.path().app_data_dir().map_err(io::Error::other)?);
         fs::create_dir_all(&app_data_dir)?;
         let data_dir = normalize_windows_path(app_data_dir.join("postgres-data"));
         let log_file = normalize_windows_path(app_data_dir.join("postgres.log"));
@@ -121,13 +123,14 @@ impl EmbeddedPostgres {
 
     fn start(&self) -> io::Result<()> {
         let pg_ctl = self.bin_dir.join("pg_ctl.exe");
+        let log_file = self.resolve_writable_log_path()?;
         run_command(
             &pg_ctl,
             &[
                 OsString::from("-D"),
                 self.data_dir.as_os_str().to_os_string(),
                 OsString::from("-l"),
-                self.log_file.as_os_str().to_os_string(),
+                log_file.as_os_str().to_os_string(),
                 OsString::from("-w"),
                 OsString::from("-o"),
                 OsString::from(format!("-p {POSTGRES_PORT}")),
@@ -136,6 +139,41 @@ impl EmbeddedPostgres {
             &self.bin_dir,
             &self.root_dir,
         )
+    }
+
+    fn resolve_writable_log_path(&self) -> io::Result<PathBuf> {
+        let mut candidates = Vec::new();
+        candidates.push(self.log_file.clone());
+        candidates.push(std::env::temp_dir().join("rustsk-postgres.log"));
+
+        let mut last_error: Option<io::Error> = None;
+
+        for candidate in candidates {
+            if let Some(parent) = candidate.parent() {
+                if let Err(err) = fs::create_dir_all(parent) {
+                    last_error = Some(err);
+                    continue;
+                }
+            }
+
+            match OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&candidate)
+            {
+                Ok(_) => return Ok(candidate),
+                Err(err) => {
+                    last_error = Some(err);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "unable to open postgres log file in app data or temp directory",
+            )
+        }))
     }
 
     fn stop(&self) {

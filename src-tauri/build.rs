@@ -7,7 +7,10 @@ fn main() {
     tauri_build::build();
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let vendored_include = manifest_dir.join("third-party").join("sleuthkit").join("include");
+    let vendored_include = manifest_dir
+        .join("third-party")
+        .join("sleuthkit")
+        .join("include");
 
     let include_dir = configure_linking(&manifest_dir, &vendored_include);
     generate_bindings(&include_dir);
@@ -82,27 +85,34 @@ fn generate_bindings(include_dir: &Path) {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let wrapper = manifest_dir.join("wrapper.h");
-    let vendored_source = manifest_dir.join("third-party").join("sleuthkit").join("source");
+    let vendored_source = manifest_dir
+        .join("third-party")
+        .join("sleuthkit")
+        .join("source");
 
     println!("cargo:rerun-if-changed={}", wrapper.display());
     println!("cargo:rerun-if-changed={}", include_dir.display());
     println!("cargo:rerun-if-changed={}", vendored_source.display());
 
-    let (wrapper_header, extra_include_dir) = if vendored_source.join("tsk").join("libtsk.h").exists() {
-        (vendored_source.join("tsk").join("libtsk.h"), Some(vendored_source))
-    } else if include_dir.join("tsk").join("libtsk.h").exists() {
-        (include_dir.join("tsk").join("libtsk.h"), None)
-    } else if include_dir.join("libtsk.h").exists() {
-        // Some packaged Windows headers flatten include paths as include/{base,img,...}
-        // while libtsk.h still references tsk/{base,img,...}. Use our wrapper in this case.
-        if include_dir.join("tsk").exists() {
-            (include_dir.join("libtsk.h"), None)
+    let (wrapper_header, extra_include_dir) =
+        if vendored_source.join("tsk").join("libtsk.h").exists() {
+            (
+                vendored_source.join("tsk").join("libtsk.h"),
+                Some(vendored_source),
+            )
+        } else if include_dir.join("tsk").join("libtsk.h").exists() {
+            (include_dir.join("tsk").join("libtsk.h"), None)
+        } else if include_dir.join("libtsk.h").exists() {
+            // Some packaged Windows headers flatten include paths as include/{base,img,...}
+            // while libtsk.h still references tsk/{base,img,...}. Use our wrapper in this case.
+            if include_dir.join("tsk").exists() {
+                (include_dir.join("libtsk.h"), None)
+            } else {
+                (wrapper.clone(), None)
+            }
         } else {
             (wrapper.clone(), None)
-        }
-    } else {
-        (wrapper.clone(), None)
-    };
+        };
 
     let mut clang_include_dirs = vec![include_dir.to_path_buf()];
     if let Some(extra_include_dir) = extra_include_dir {
@@ -131,7 +141,9 @@ fn generate_bindings(include_dir: &Path) {
     let out_file = out_dir.join("bindings.rs");
     match generated {
         Ok(Ok(bindings)) => {
-            bindings.write_to_file(&out_file).expect("failed to write bindings");
+            bindings
+                .write_to_file(&out_file)
+                .expect("failed to write bindings");
         }
         Ok(Err(err)) => {
             println!("cargo:warning=bindgen unavailable, using fallback bindings: {err}");
