@@ -7,7 +7,9 @@ type Props = {
 };
 
 const Step3SelectDataSource = ({ dataSourceType }: Props) => {
-  const [path, setPath] = useState("E:\\");
+  const initialPath =
+    localStorage.getItem("cultivator-active-image-path") ?? "E:\\";
+  const [path, setPath] = useState(initialPath);
   const [ignoreOrphanFiles, setIgnoreOrphanFiles] = useState(false);
   const [timezone, setTimezone] = useState("(GMT-5:00) America/New_York");
   const [sectorSize, setSectorSize] = useState("Auto Detect");
@@ -24,6 +26,7 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
 
     if (typeof selected === "string") {
       setPath(selected);
+      localStorage.setItem("cultivator-active-image-path", selected);
     }
   };
 
@@ -50,7 +53,11 @@ const Step3SelectDataSource = ({ dataSourceType }: Props) => {
           <input
             className="input input-bordered w-full"
             value={path}
-            onChange={(event) => setPath(event.target.value)}
+            onChange={(event) => {
+              const nextPath = event.target.value;
+              setPath(nextPath);
+              localStorage.setItem("cultivator-active-image-path", nextPath);
+            }}
           />
           <button className="btn btn-outline" type="button" onClick={handleBrowse}>
             Browse
