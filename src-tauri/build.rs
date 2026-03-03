@@ -93,23 +93,36 @@ fn generate_bindings(include_dir: &Path) {
     } else if include_dir.join("tsk").join("libtsk.h").exists() {
         (include_dir.join("tsk").join("libtsk.h"), None)
     } else if include_dir.join("libtsk.h").exists() {
-        (include_dir.join("libtsk.h"), None)
+        // Some packaged Windows headers flatten include paths as include/{base,img,...}
+        // while libtsk.h still references tsk/{base,img,...}. Use our wrapper in this case.
+        if include_dir.join("tsk").exists() {
+            (include_dir.join("libtsk.h"), None)
+        } else {
+            (wrapper.clone(), None)
+        }
     } else {
         (wrapper.clone(), None)
     };
 
+    let mut clang_include_dirs = vec![include_dir.to_path_buf()];
+    if let Some(extra_include_dir) = extra_include_dir {
+        if extra_include_dir != include_dir {
+            clang_include_dirs.push(extra_include_dir);
+        }
+    }
+    if let Some(compat_include_dir) = create_bindgen_compat_include(include_dir, &out_dir) {
+        clang_include_dirs.push(compat_include_dir);
+    }
+
     let generated = std::panic::catch_unwind(|| {
         let mut builder = bindgen::Builder::default()
             .header(wrapper_header.display().to_string())
-            .clang_arg(format!("-I{}", include_dir.display()))
             .allowlist_function("tsk_.*")
             .allowlist_type("TSK_.*")
             .allowlist_var("TSK_.*");
 
-        if let Some(extra_include_dir) = extra_include_dir {
-            if extra_include_dir != include_dir {
-                builder = builder.clang_arg(format!("-I{}", extra_include_dir.display()));
-            }
+        for dir in &clang_include_dirs {
+            builder = builder.clang_arg(format!("-I{}", dir.display()));
         }
 
         builder.generate()
@@ -168,6 +181,48 @@ fn run_cmd(cwd: &Path, program: &str, args: &[&str]) {
 
 fn run_cmd_allow_fail(cwd: &Path, program: &str, args: &[&str]) {
     let _ = Command::new(program).args(args).current_dir(cwd).status();
+}
+
+fn create_bindgen_compat_include(include_dir: &Path, out_dir: &Path) -> Option<PathBuf> {
+    if include_dir.join("tsk").exists() || !include_dir.join("libtsk.h").exists() {
+        return None;
+    }
+
+    let compat_root = out_dir.join("bindgen-compat");
+    let compat_tsk_root = compat_root.join("tsk");
+    if fs::create_dir_all(&compat_tsk_root).is_err() {
+        return None;
+    }
+
+    if mirror_header_tree(include_dir, &compat_tsk_root).is_err() {
+        return None;
+    }
+
+    Some(compat_root)
+}
+
+fn mirror_header_tree(source: &Path, target: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target_path = target.join(entry.file_name());
+
+        if path.is_dir() {
+            fs::create_dir_all(&target_path)?;
+            mirror_header_tree(&path, &target_path)?;
+            continue;
+        }
+
+        if path.extension().and_then(|s| s.to_str()) != Some("h") {
+            continue;
+        }
+
+        let include_path = path.to_string_lossy().replace('\\', "/");
+        let contents = format!("#include \"{}\"\n", include_path);
+        fs::write(target_path, contents)?;
+    }
+
+    Ok(())
 }
 
 fn write_fallback_bindings(out_file: &Path) {
