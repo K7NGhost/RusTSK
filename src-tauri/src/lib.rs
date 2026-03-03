@@ -1,3 +1,4 @@
+pub mod postgres;
 pub mod tsk;
 pub mod tsk_sys;
 
@@ -9,23 +10,22 @@ fn list_dir(image_path: String, offset: i64, path: String) -> Result<Vec<tsk::Di
     fs.list_dir(&path).map_err(|err| err.to_string())
 }
 
-#[tauri::command]
-fn list_artifacts(
-    image_path: String,
-    offset: i64,
-    path: String,
-) -> Result<Vec<tsk::ArtifactRecord>, String> {
-    let fs = tsk::Fs::open(std::path::Path::new(&image_path), offset)
-        .map_err(|err| err.to_string())?;
-    fs.list_artifacts(&path).map_err(|err| err.to_string())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(err) = postgres::start_embedded_postgres(&app_handle) {
+                    eprintln!("embedded postgres startup failed: {err}");
+                }
+            });
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![list_dir, list_artifacts])
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![list_dir])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
