@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useCaseContext } from "../../features/case-service/context/CaseContext";
-import type { DirectorySelection } from "../../features/case-service/dataSourceTypes";
+import type {
+  DirectorySelection,
+  SelectedFile,
+} from "../../features/case-service/dataSourceTypes";
 import AddDataSourceModal from "./components/AddDataSourceModal";
 import ContentViewer from "./components/ContentViewer";
 import ResultViewer from "./components/ResultViewer";
@@ -27,6 +30,10 @@ const Dashboard = () => {
     useState(false);
   const [selectedDirectory, setSelectedDirectory] =
     useState<DirectorySelection | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<DirectorySelection | null>(
+    null,
+  );
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
   return (
     <div className="flex h-screen flex-col bg-base-200/40">
@@ -46,7 +53,11 @@ const Dashboard = () => {
             <div className="h-full p-1">
               <TreeViewer
                 dataSources={dataSources}
-                onDirectorySelected={setSelectedDirectory}
+                onDirectorySelected={(selection) => {
+                  setSelectedDirectory(selection);
+                  setSelectedFile(null);
+                  setSelectedFolder(null);
+                }}
               />
             </div>
           </Panel>
@@ -60,6 +71,16 @@ const Dashboard = () => {
                   <ResultViewer
                     dataSources={dataSources}
                     selectedDirectory={selectedDirectory}
+                    selectedFile={selectedFile}
+                    onFileSelected={(file) => {
+                      setSelectedFile(file);
+                      setSelectedFolder(null);
+                    }}
+                    onDirectorySelected={(selection) => {
+                      setSelectedDirectory(selection);
+                      setSelectedFile(null);
+                      setSelectedFolder(null);
+                    }}
                   />
                 </div>
               </Panel>
@@ -68,7 +89,11 @@ const Dashboard = () => {
 
               <Panel defaultSize={42} minSize={22}>
                 <div className="h-full p-1">
-                  <ContentViewer />
+                  <ContentViewer
+                    selectedFile={selectedFile}
+                    selectedFolder={selectedFolder}
+                    dataSources={dataSources}
+                  />
                 </div>
               </Panel>
             </Group>

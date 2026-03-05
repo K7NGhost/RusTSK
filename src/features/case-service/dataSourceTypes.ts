@@ -32,3 +32,11 @@ export type DirectorySelection = {
   filesystemId: string;
   path: string;
 };
+
+export type SelectedFile = {
+  sourceImagePath: string;
+  filesystemId: string;
+  filesystemOffset: number;
+  fileName: string;
+  filePath: string;
+};
