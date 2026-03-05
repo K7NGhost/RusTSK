@@ -11,6 +11,10 @@ const FS_TYPE_DETECT: tsk_sys::TSK_FS_TYPE_ENUM = tsk_sys::TSK_FS_TYPE_ENUM_TSK_
 const VS_TYPE_DETECT: tsk_sys::TSK_VS_TYPE_ENUM = tsk_sys::TSK_VS_TYPE_ENUM_TSK_VS_TYPE_DETECT;
 const VS_PART_FLAG_ALLOC: tsk_sys::TSK_VS_PART_FLAG_ENUM =
     tsk_sys::TSK_VS_PART_FLAG_ENUM_TSK_VS_PART_FLAG_ALLOC;
+const FS_FILE_READ_FLAG_NONE: tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM =
+    tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM_TSK_FS_FILE_READ_FLAG_NONE;
+const FS_FILE_READ_FLAG_NOID: tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM =
+    tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM_TSK_FS_FILE_READ_FLAG_NOID;
 const FS_NAME_TYPE_DIR: tsk_sys::TSK_FS_NAME_TYPE_ENUM =
     tsk_sys::TSK_FS_NAME_TYPE_ENUM_TSK_FS_NAME_TYPE_DIR;
 const FS_NAME_TYPE_VIRT_DIR: tsk_sys::TSK_FS_NAME_TYPE_ENUM =
@@ -127,6 +131,10 @@ fn join_tsk_path(parent_path: &str, name: &str) -> String {
     }
 }
 
+fn is_strings_printable_ascii(byte: u8) -> bool {
+    byte.is_ascii_graphic() || byte == b' ' || byte == b'\t'
+}
+
 unsafe fn collect_folders_and_files(
     fs: *mut tsk_sys::TSK_FS_INFO,
     dir_inum: tsk_sys::TSK_INUM_T,
@@ -205,6 +213,19 @@ pub struct DataSourceTree {
     pub image_path: String,
     pub image_name: String,
     pub filesystems: Vec<FileSystemTree>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtractedString {
+    pub offset: u64,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StringsResult {
+    pub strings: Vec<ExtractedString>,
+    pub scanned_bytes: usize,
+    pub truncated: bool,
 }
 
 pub fn discover_data_source_tree(image_path: &Path) -> Result<DataSourceTree, TskError> {
@@ -377,6 +398,195 @@ impl Fs {
         unsafe { tsk_sys::tsk_fs_dir_close(dir) };
         Ok(entries)
     }
+
+    pub fn read_file(&self, path: &str, max_bytes: usize) -> Result<Vec<u8>, TskError> {
+        let c_path = CString::new(path).map_err(|_| TskError {
+            code: 0,
+            message: "Path contains an interior NUL byte".to_string(),
+        })?;
+
+        let fs_file = unsafe { tsk_sys::tsk_fs_file_open(self.fs, std::ptr::null_mut(), c_path.as_ptr()) };
+        if fs_file.is_null() {
+            return Err(last_tsk_error());
+        }
+
+        if max_bytes == 0 {
+            unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+            return Ok(Vec::new());
+        }
+
+        let mut out = Vec::new();
+        out.reserve(max_bytes.min(64 * 1024));
+        let mut offset: i64 = 0;
+        let read_flags = FS_FILE_READ_FLAG_NONE | FS_FILE_READ_FLAG_NOID;
+
+        loop {
+            if out.len() >= max_bytes {
+                break;
+            }
+
+            let remaining = max_bytes - out.len();
+            let chunk_len = remaining.min(64 * 1024);
+            let mut chunk = vec![0_u8; chunk_len];
+            let read_res = unsafe {
+                tsk_sys::tsk_fs_file_read(
+                    fs_file,
+                    offset,
+                    chunk.as_mut_ptr() as *mut std::os::raw::c_char,
+                    chunk_len,
+                    read_flags,
+                )
+            };
+
+            if read_res < 0 {
+                let err = last_tsk_error();
+                if err.message.contains("Invalid file offset") {
+                    break;
+                }
+                unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+                return Err(err);
+            }
+
+            if read_res == 0 {
+                break;
+            }
+
+            let read_usize = read_res as usize;
+            out.extend_from_slice(&chunk[..read_usize]);
+            offset += read_res as i64;
+        }
+
+        unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+        Ok(out)
+    }
+
+    pub fn extract_ascii_strings(
+        &self,
+        path: &str,
+        min_len: usize,
+        max_bytes: usize,
+        max_strings: usize,
+    ) -> Result<StringsResult, TskError> {
+        let c_path = CString::new(path).map_err(|_| TskError {
+            code: 0,
+            message: "Path contains an interior NUL byte".to_string(),
+        })?;
+
+        let fs_file =
+            unsafe { tsk_sys::tsk_fs_file_open(self.fs, std::ptr::null_mut(), c_path.as_ptr()) };
+        if fs_file.is_null() {
+            return Err(last_tsk_error());
+        }
+
+        if max_bytes == 0 || max_strings == 0 {
+            unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+            return Ok(StringsResult {
+                strings: Vec::new(),
+                scanned_bytes: 0,
+                truncated: false,
+            });
+        }
+
+        let effective_min_len = min_len.max(1);
+        let read_flags = FS_FILE_READ_FLAG_NONE | FS_FILE_READ_FLAG_NOID;
+        const CHUNK_SIZE: usize = 256 * 1024;
+
+        let mut strings = Vec::<ExtractedString>::new();
+        let mut current = Vec::<u8>::new();
+        let mut current_start: u64 = 0;
+        let mut scanned_bytes: usize = 0;
+        let mut file_offset: i64 = 0;
+        let mut truncated = false;
+
+        'read_loop: loop {
+            if scanned_bytes >= max_bytes {
+                truncated = true;
+                break;
+            }
+            if strings.len() >= max_strings {
+                truncated = true;
+                break;
+            }
+
+            let remaining = max_bytes - scanned_bytes;
+            let chunk_len = remaining.min(CHUNK_SIZE);
+            if chunk_len == 0 {
+                truncated = true;
+                break;
+            }
+
+            let mut chunk = vec![0_u8; chunk_len];
+            let read_res = unsafe {
+                tsk_sys::tsk_fs_file_read(
+                    fs_file,
+                    file_offset,
+                    chunk.as_mut_ptr() as *mut std::os::raw::c_char,
+                    chunk_len,
+                    read_flags,
+                )
+            };
+
+            if read_res < 0 {
+                let err = last_tsk_error();
+                if err.message.contains("Invalid file offset") {
+                    break;
+                }
+                unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+                return Err(err);
+            }
+
+            if read_res == 0 {
+                break;
+            }
+
+            let read_usize = read_res as usize;
+            let chunk_offset_start = file_offset as u64;
+
+            for (index, byte) in chunk[..read_usize].iter().enumerate() {
+                if is_strings_printable_ascii(*byte) {
+                    if current.is_empty() {
+                        current_start = chunk_offset_start + index as u64;
+                    }
+                    current.push(*byte);
+                    continue;
+                }
+
+                if current.len() >= effective_min_len {
+                    strings.push(ExtractedString {
+                        offset: current_start,
+                        value: String::from_utf8_lossy(&current).into_owned(),
+                    });
+                    if strings.len() >= max_strings {
+                        truncated = true;
+                        current.clear();
+                        break 'read_loop;
+                    }
+                }
+                current.clear();
+            }
+
+            scanned_bytes += read_usize;
+            file_offset += read_res as i64;
+        }
+
+        if current.len() >= effective_min_len && strings.len() < max_strings {
+            strings.push(ExtractedString {
+                offset: current_start,
+                value: String::from_utf8_lossy(&current).into_owned(),
+            });
+        } else if current.len() >= effective_min_len && strings.len() >= max_strings {
+            truncated = true;
+        }
+
+        unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+
+        Ok(StringsResult {
+            strings,
+            scanned_bytes,
+            truncated,
+        })
+    }
+
 }
 
 impl Drop for Fs {
