@@ -113,6 +113,17 @@ fn read_file_strings(
     .map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn read_path_metadata(
+    image_path: String,
+    offset: i64,
+    path: String,
+) -> Result<tsk::PathMetadata, String> {
+    let fs = tsk::Fs::open(std::path::Path::new(&image_path), offset)
+        .map_err(|err| err.to_string())?;
+    fs.read_path_metadata(&path).map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -134,7 +145,8 @@ pub fn run() {
             list_dir,
             discover_disk_image_tree,
             read_file_bytes,
-            read_file_strings
+            read_file_strings,
+            read_path_metadata
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

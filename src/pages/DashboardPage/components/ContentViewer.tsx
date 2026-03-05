@@ -112,6 +112,7 @@ const readThemeVarColor = (
 type Props = {
   selectedFile: SelectedFile | null;
   selectedFolder: DirectorySelection | null;
+  selectedDirectory: DirectorySelection | null;
   dataSources: DataSourceTree[];
 };
 
@@ -119,6 +120,47 @@ type StringsCommandResult = {
   strings: StringEntry[];
   scanned_bytes: number;
   truncated: boolean;
+};
+
+type MetadataRow = {
+  label: string;
+  value: string;
+};
+
+type IstatDirectBlock = {
+  start: number;
+  length: number;
+};
+
+type PathMetadataResult = {
+  name: string;
+  path: string;
+  type_label: string;
+  mime_type: string;
+  size: number;
+  file_name_allocation: string;
+  metadata_allocation: string;
+  modified: number | null;
+  accessed: number | null;
+  created: number | null;
+  changed: number | null;
+  md5: string;
+  sha256: string;
+  hash_lookup_results: string;
+  internal_id: number;
+  istat_inode: number;
+  istat_allocated: boolean;
+  istat_group: number | null;
+  istat_generation_id: number | null;
+  istat_uid: number;
+  istat_gid: number;
+  istat_mode: string;
+  istat_size: number;
+  istat_num_links: number;
+  istat_accessed: number | null;
+  istat_file_modified: number | null;
+  istat_inode_modified: number | null;
+  istat_direct_blocks: IstatDirectBlock[];
 };
 
 type FolderPreviewPayload = {
@@ -142,6 +184,82 @@ const collectFolderPaths = (
     collectFolderPaths(node.children, acc);
   }
   return acc;
+};
+
+const findFolderByPath = (
+  nodes: FolderNode[],
+  targetPath: string,
+): FolderNode | null => {
+  for (const node of nodes) {
+    if (node.path === targetPath) {
+      return node;
+    }
+    const foundInChild = findFolderByPath(node.children, targetPath);
+    if (foundInChild) {
+      return foundInChild;
+    }
+  }
+  return null;
+};
+
+const dirname = (path: string): string => {
+  if (!path || path === "/") {
+    return "/";
+  }
+  const trimmed = path.endsWith("/") ? path.slice(0, -1) : path;
+  const index = trimmed.lastIndexOf("/");
+  if (index <= 0) {
+    return "/";
+  }
+  return trimmed.slice(0, index);
+};
+
+const formatTimestamp = (unixSeconds: number | null): string => {
+  if (!unixSeconds || unixSeconds <= 0) {
+    return "0000-00-00 00:00:00";
+  }
+
+  const date = new Date(unixSeconds * 1000);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  }).formatToParts(date);
+
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  const hour = part("hour");
+  const minute = part("minute");
+  const second = part("second");
+  const zone = part("timeZoneName");
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ""}`;
+};
+
+const formatTimestampWithParenZone = (unixSeconds: number | null): string => {
+  if (!unixSeconds || unixSeconds <= 0) {
+    return "0000-00-00 00:00:00";
+  }
+
+  const rendered = formatTimestamp(unixSeconds);
+  const parts = rendered.split(" ");
+  if (parts.length < 3) {
+    return rendered;
+  }
+  const zone = parts.pop();
+  if (!zone) {
+    return rendered;
+  }
+  return `${parts.join(" ")} (${zone})`;
 };
 
 const buildFolderPreviewPayload = (
@@ -242,7 +360,12 @@ const extractStringsFromText = (
   };
 };
 
-const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => {
+const ContentViewer = ({
+  selectedFile,
+  selectedFolder,
+  selectedDirectory,
+  dataSources,
+}: Props) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [hexData, setHexData] = useState<Uint8Array | null>(null);
   const [isHexLoading, setIsHexLoading] = useState(false);
@@ -260,6 +383,9 @@ const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => 
   const [addressGapChars, setAddressGapChars] = useState(DEFAULT_ADDRESS_GAP);
   const [hexGapChars, setHexGapChars] = useState(DEFAULT_HEX_GAP);
   const [sectionGapChars, setSectionGapChars] = useState(DEFAULT_SECTION_GAP);
+  const [pathMetadata, setPathMetadata] = useState<PathMetadataResult | null>(null);
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const stringsCacheRef = useRef<Map<string, StringsCommandResult>>(new Map());
   const folderPreview = useMemo(
     () =>
@@ -267,6 +393,153 @@ const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => 
     [dataSources, selectedFolder],
   );
   const hasSelection = Boolean(selectedFile || selectedFolder);
+  const metadataTarget = useMemo(() => {
+    if (selectedFile) {
+      return {
+        imagePath: selectedFile.sourceImagePath,
+        offset: selectedFile.filesystemOffset,
+        path: selectedFile.filePath,
+      };
+    }
+
+    const folderLikeSelection = selectedFolder ?? selectedDirectory;
+    if (!folderLikeSelection) {
+      return null;
+    }
+
+    const source = dataSources.find(
+      (item) => item.image_path === folderLikeSelection.sourceImagePath,
+    );
+    const filesystem = source?.filesystems.find(
+      (item) => item.id === folderLikeSelection.filesystemId,
+    );
+    if (!source || !filesystem) {
+      return null;
+    }
+
+    return {
+      imagePath: source.image_path,
+      offset: filesystem.offset,
+      path: folderLikeSelection.path,
+    };
+  }, [dataSources, selectedDirectory, selectedFile, selectedFolder]);
+  const metadataView = useMemo(() => {
+    const sourceImagePath =
+      selectedFile?.sourceImagePath ??
+      selectedFolder?.sourceImagePath ??
+      selectedDirectory?.sourceImagePath;
+    const filesystemId =
+      selectedFile?.filesystemId ??
+      selectedFolder?.filesystemId ??
+      selectedDirectory?.filesystemId;
+
+    if (!sourceImagePath || !filesystemId) {
+      return null;
+    }
+
+    const source = dataSources.find((item) => item.image_path === sourceImagePath);
+    const filesystem = source?.filesystems.find((item) => item.id === filesystemId);
+
+    if (!source || !filesystem) {
+      return {
+        title: "Metadata",
+        rows: [
+          { label: "Source image path", value: sourceImagePath },
+          { label: "Filesystem ID", value: filesystemId },
+          { label: "Status", value: "Metadata could not be resolved." },
+        ] as MetadataRow[],
+      };
+    }
+
+    const filesystemLabel = filesystem.fs_type
+      ? `${filesystem.label} [${filesystem.fs_type}]`
+      : filesystem.label;
+
+    if (selectedFile) {
+      const fileEntry = filesystem.files.find(
+        (entry) => entry.path === selectedFile.filePath,
+      );
+      const rows: MetadataRow[] = [
+        { label: "Type", value: "File" },
+        { label: "Name", value: selectedFile.fileName },
+        { label: "Path", value: selectedFile.filePath },
+        {
+          label: "Parent Path",
+          value: fileEntry?.parent_path ?? dirname(selectedFile.filePath),
+        },
+        {
+          label: "Metadata Address",
+          value:
+            fileEntry?.meta_addr !== undefined
+              ? `0x${fileEntry.meta_addr.toString(16).toUpperCase()} (${fileEntry.meta_addr})`
+              : "N/A",
+        },
+        { label: "Filesystem", value: filesystemLabel },
+        { label: "Filesystem ID", value: filesystem.id },
+        {
+          label: "Filesystem Offset",
+          value: `0x${filesystem.offset.toString(16).toUpperCase()} (${filesystem.offset})`,
+        },
+        { label: "Source Image", value: source.image_name },
+        { label: "Source Image Path", value: source.image_path },
+      ];
+
+      return { title: "File Metadata", rows };
+    }
+
+    const folderPath = selectedFolder?.path ?? selectedDirectory?.path;
+    if (!folderPath) {
+      return null;
+    }
+
+    const folderNode =
+      folderPath === "/" ? null : findFolderByPath(filesystem.folders, folderPath);
+    const immediateSubfolders =
+      folderPath === "/" ? filesystem.folders.length : folderNode?.children.length ?? 0;
+    const immediateFiles = filesystem.files.filter(
+      (entry) => entry.parent_path === folderPath,
+    ).length;
+    const descendantSubfolders =
+      folderPath === "/"
+        ? collectFolderPaths(filesystem.folders).length
+        : collectFolderPaths(folderNode?.children ?? []).length;
+    const descendantFiles =
+      folderPath === "/"
+        ? filesystem.files.length
+        : filesystem.files.filter((entry) =>
+            entry.path.startsWith(normalizePathPrefix(folderPath)),
+          ).length;
+
+    const rows: MetadataRow[] = [
+      { label: "Type", value: "Folder" },
+      { label: "Name", value: folderPath === "/" ? "Root" : folderPath.split("/").pop() || folderPath },
+      { label: "Path", value: folderPath },
+      { label: "Parent Path", value: dirname(folderPath) },
+      {
+        label: "Metadata Address",
+        value:
+          folderPath === "/"
+            ? "Root pseudo-node (no direct metadata address in current tree data)"
+            : folderNode
+              ? `0x${folderNode.meta_addr.toString(16).toUpperCase()} (${folderNode.meta_addr})`
+              : "N/A",
+      },
+      { label: "Immediate Subfolders", value: String(immediateSubfolders) },
+      { label: "Immediate Files", value: String(immediateFiles) },
+      { label: "Descendant Subfolders", value: String(descendantSubfolders) },
+      { label: "Descendant Files", value: String(descendantFiles) },
+      { label: "Filesystem", value: filesystemLabel },
+      { label: "Filesystem ID", value: filesystem.id },
+      {
+        label: "Filesystem Offset",
+        value: `0x${filesystem.offset.toString(16).toUpperCase()} (${filesystem.offset})`,
+      },
+      { label: "Source Image", value: source.image_name },
+      { label: "Source Image Path", value: source.image_path },
+    ];
+
+    return { title: "Folder Metadata", rows };
+  }, [dataSources, selectedDirectory, selectedFile, selectedFolder]);
 
   useEffect(() => {
     const currentFile = selectedFile;
@@ -429,6 +702,47 @@ const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => 
   }, [folderPreview, minStringsLength, selectedFile, selectedFolder]);
 
   useEffect(() => {
+    if (!metadataTarget) {
+      setPathMetadata(null);
+      setMetadataError(null);
+      setIsMetadataLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsMetadataLoading(true);
+    setMetadataError(null);
+
+    void invoke<PathMetadataResult>("read_path_metadata", {
+      imagePath: metadataTarget.imagePath,
+      offset: metadataTarget.offset,
+      path: metadataTarget.path,
+    })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setPathMetadata(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setPathMetadata(null);
+        setMetadataError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsMetadataLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [metadataTarget]);
+
+  useEffect(() => {
     const root = document.documentElement;
     const observer = new MutationObserver(() => {
       setThemeVersion((prev) => prev + 1);
@@ -522,6 +836,13 @@ const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => 
             Selected folder:{" "}
             <span className="font-mono text-base-content/90">
               {selectedFolder.path}
+            </span>
+          </span>
+        ) : selectedDirectory ? (
+          <span>
+            Current directory:{" "}
+            <span className="font-mono text-base-content/90">
+              {selectedDirectory.path}
             </span>
           </span>
         ) : (
@@ -676,6 +997,316 @@ const ContentViewer = ({ selectedFile, selectedFolder, dataSources }: Props) => 
               )
             }
           />
+        ) : selectedTab === 5 ? (
+          <div className="h-full overflow-auto rounded-lg border border-base-300 bg-base-100 p-3">
+            {isMetadataLoading && (
+              <div className="grid h-full place-items-center text-sm text-base-content/70">
+                Loading metadata...
+              </div>
+            )}
+
+            {!isMetadataLoading && metadataError && (
+              <div className="grid h-full place-items-center px-4 text-center text-sm text-error">
+                Failed to load metadata: {metadataError}
+              </div>
+            )}
+
+            {!isMetadataLoading && !metadataError && !pathMetadata && !metadataView && (
+              <div className="grid h-full place-items-center text-sm text-base-content/70">
+                Select a file or folder to view metadata.
+              </div>
+            )}
+
+            {!isMetadataLoading && !metadataError && pathMetadata && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-base-content/90">
+                  Metadata
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra table-sm">
+                    <tbody>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Name
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {metadataTarget
+                            ? `${metadataTarget.imagePath}${pathMetadata.path}`
+                            : pathMetadata.path}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Type
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.type_label}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          MIME Type
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.mime_type}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Size
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.size}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          File Name Allocation
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.file_name_allocation}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Metadata Allocation
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.metadata_allocation}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Modified
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestamp(pathMetadata.modified)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Accessed
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestamp(pathMetadata.accessed)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Created
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestamp(pathMetadata.created)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Changed
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestamp(pathMetadata.changed)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          MD5
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.md5}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          SHA-256
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.sha256}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Hash Lookup Results
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.hash_lookup_results}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Internal ID
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.internal_id}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3 className="text-sm font-semibold text-base-content/90">
+                  From The Sleuth Kit istat Tool
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra table-sm">
+                    <tbody>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          inode
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_inode}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Allocation
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_allocated ? "Allocated" : "Unallocated"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Group
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_group ?? "Unknown"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Generation Id
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_generation_id ?? "Unknown"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          uid / gid
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_uid} / {pathMetadata.istat_gid}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          mode
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_mode}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          size
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_size}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          num of links
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {pathMetadata.istat_num_links}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3 className="text-sm font-semibold text-base-content/90">Inode Times</h3>
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra table-sm">
+                    <tbody>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Accessed
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestampWithParenZone(pathMetadata.istat_accessed)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          File Modified
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestampWithParenZone(
+                            pathMetadata.istat_file_modified,
+                          )}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-56 align-top font-semibold text-base-content/80">
+                          Inode Modified
+                        </td>
+                        <td className="font-mono text-xs text-base-content/90">
+                          {formatTimestampWithParenZone(
+                            pathMetadata.istat_inode_modified,
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3 className="text-sm font-semibold text-base-content/90">Direct Blocks</h3>
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra table-sm">
+                    <tbody>
+                      {pathMetadata.istat_direct_blocks.length === 0 && (
+                        <tr>
+                          <td className="w-56 align-top font-semibold text-base-content/80">
+                            Starting address
+                          </td>
+                          <td className="font-mono text-xs text-base-content/90">
+                            Unknown
+                          </td>
+                        </tr>
+                      )}
+                      {pathMetadata.istat_direct_blocks.map((block, index) => (
+                        <tr key={`${block.start}-${block.length}-${index}`}>
+                          <td className="w-56 align-top font-semibold text-base-content/80">
+                            Starting address
+                          </td>
+                          <td className="font-mono text-xs text-base-content/90">
+                            {block.start}, length: {block.length}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {!isMetadataLoading && !metadataError && !pathMetadata && metadataView && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-base-content/90">
+                  {metadataView.title}
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra table-sm">
+                    <tbody>
+                      {metadataView.rows.map((row) => (
+                        <tr key={row.label}>
+                          <td className="w-48 align-top font-semibold text-base-content/80">
+                            {row.label}
+                          </td>
+                          <td className="font-mono text-xs text-base-content/90">
+                            {row.value}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="grid h-full place-items-center rounded-lg border border-base-300 bg-base-200/30 px-4 text-center text-sm text-base-content/60">
             {tabs[selectedTab]} view is not implemented yet.

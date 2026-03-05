@@ -92,6 +92,7 @@ const Dashboard = () => {
                   <ContentViewer
                     selectedFile={selectedFile}
                     selectedFolder={selectedFolder}
+                    selectedDirectory={selectedDirectory}
                     dataSources={dataSources}
                   />
                 </div>

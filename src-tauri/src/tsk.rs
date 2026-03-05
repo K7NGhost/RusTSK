@@ -15,10 +15,26 @@ const FS_FILE_READ_FLAG_NONE: tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM =
     tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM_TSK_FS_FILE_READ_FLAG_NONE;
 const FS_FILE_READ_FLAG_NOID: tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM =
     tsk_sys::TSK_FS_FILE_READ_FLAG_ENUM_TSK_FS_FILE_READ_FLAG_NOID;
+const FS_META_FLAG_ALLOC: tsk_sys::TSK_FS_META_FLAG_ENUM =
+    tsk_sys::TSK_FS_META_FLAG_ENUM_TSK_FS_META_FLAG_ALLOC;
+const FS_META_FLAG_UNALLOC: tsk_sys::TSK_FS_META_FLAG_ENUM =
+    tsk_sys::TSK_FS_META_FLAG_ENUM_TSK_FS_META_FLAG_UNALLOC;
+const FS_NAME_FLAG_ALLOC: tsk_sys::TSK_FS_NAME_FLAG_ENUM =
+    tsk_sys::TSK_FS_NAME_FLAG_ENUM_TSK_FS_NAME_FLAG_ALLOC;
+const FS_NAME_FLAG_UNALLOC: tsk_sys::TSK_FS_NAME_FLAG_ENUM =
+    tsk_sys::TSK_FS_NAME_FLAG_ENUM_TSK_FS_NAME_FLAG_UNALLOC;
 const FS_NAME_TYPE_DIR: tsk_sys::TSK_FS_NAME_TYPE_ENUM =
     tsk_sys::TSK_FS_NAME_TYPE_ENUM_TSK_FS_NAME_TYPE_DIR;
 const FS_NAME_TYPE_VIRT_DIR: tsk_sys::TSK_FS_NAME_TYPE_ENUM =
     tsk_sys::TSK_FS_NAME_TYPE_ENUM_TSK_FS_NAME_TYPE_VIRT_DIR;
+const FS_META_TYPE_DIR: tsk_sys::TSK_FS_META_TYPE_ENUM =
+    tsk_sys::TSK_FS_META_TYPE_ENUM_TSK_FS_META_TYPE_DIR;
+const FS_META_TYPE_VIRT_DIR: tsk_sys::TSK_FS_META_TYPE_ENUM =
+    tsk_sys::TSK_FS_META_TYPE_ENUM_TSK_FS_META_TYPE_VIRT_DIR;
+const FS_ATTR_RUN_FLAG_FILLER: tsk_sys::TSK_FS_ATTR_RUN_FLAG_ENUM =
+    tsk_sys::TSK_FS_ATTR_RUN_FLAG_ENUM_TSK_FS_ATTR_RUN_FLAG_FILLER;
+const FS_ATTR_RUN_FLAG_SPARSE: tsk_sys::TSK_FS_ATTR_RUN_FLAG_ENUM =
+    tsk_sys::TSK_FS_ATTR_RUN_FLAG_ENUM_TSK_FS_ATTR_RUN_FLAG_SPARSE;
 
 #[derive(Debug, Clone)]
 pub struct TskError {
@@ -226,6 +242,153 @@ pub struct StringsResult {
     pub strings: Vec<ExtractedString>,
     pub scanned_bytes: usize,
     pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IstatDirectBlock {
+    pub start: u64,
+    pub length: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PathMetadata {
+    pub name: String,
+    pub path: String,
+    pub type_label: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub file_name_allocation: String,
+    pub metadata_allocation: String,
+    pub modified: Option<i64>,
+    pub accessed: Option<i64>,
+    pub created: Option<i64>,
+    pub changed: Option<i64>,
+    pub md5: String,
+    pub sha256: String,
+    pub hash_lookup_results: String,
+    pub internal_id: u64,
+    pub istat_inode: u64,
+    pub istat_allocated: bool,
+    pub istat_group: Option<u64>,
+    pub istat_generation_id: Option<u64>,
+    pub istat_uid: u32,
+    pub istat_gid: u32,
+    pub istat_mode: String,
+    pub istat_size: i64,
+    pub istat_num_links: i32,
+    pub istat_accessed: Option<i64>,
+    pub istat_file_modified: Option<i64>,
+    pub istat_inode_modified: Option<i64>,
+    pub istat_direct_blocks: Vec<IstatDirectBlock>,
+}
+
+fn allocation_status_from_flags(
+    flags: i32,
+    alloc_flag: i32,
+    unalloc_flag: i32,
+) -> String {
+    if (flags & alloc_flag) != 0 {
+        "Allocated".to_string()
+    } else if (flags & unalloc_flag) != 0 {
+        "Unallocated".to_string()
+    } else {
+        "Unknown".to_string()
+    }
+}
+
+fn to_optional_unix_time(value: i64) -> Option<i64> {
+    if value <= 0 {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn mode_to_rwx(mode: i32) -> String {
+    let bits = [
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IRUSR, 'r'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IWUSR, 'w'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IXUSR, 'x'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IRGRP, 'r'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IWGRP, 'w'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IXGRP, 'x'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IROTH, 'r'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IWOTH, 'w'),
+        (tsk_sys::TSK_FS_META_MODE_ENUM_TSK_FS_META_MODE_IXOTH, 'x'),
+    ];
+
+    let mut out = String::with_capacity(9);
+    for (bit, ch) in bits {
+        if (mode & bit) != 0 {
+            out.push(ch);
+        } else {
+            out.push('-');
+        }
+    }
+    out
+}
+
+fn detect_mime_type(path: &str, is_dir: bool) -> String {
+    if is_dir {
+        return "inode/directory".to_string();
+    }
+
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    match extension.as_str() {
+        "txt" | "log" | "text" | "csv" | "md" => "text/plain".to_string(),
+        "json" => "application/json".to_string(),
+        "xml" => "application/xml".to_string(),
+        "html" | "htm" => "text/html".to_string(),
+        "jpg" | "jpeg" => "image/jpeg".to_string(),
+        "png" => "image/png".to_string(),
+        "gif" => "image/gif".to_string(),
+        "pdf" => "application/pdf".to_string(),
+        "zip" => "application/zip".to_string(),
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
+unsafe fn collect_istat_direct_blocks(fs_file: *mut tsk_sys::TSK_FS_FILE) -> Vec<IstatDirectBlock> {
+    if fs_file.is_null() {
+        return Vec::new();
+    }
+
+    let _ = unsafe { tsk_sys::tsk_fs_file_attr_get(fs_file) };
+    let meta = unsafe { (*fs_file).meta };
+    if meta.is_null() {
+        return Vec::new();
+    }
+
+    let attr_list = unsafe { (*meta).attr };
+    if attr_list.is_null() {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    let mut attr = unsafe { (*attr_list).head };
+    while !attr.is_null() {
+        let mut run = unsafe { (*attr).nrd.run };
+        while !run.is_null() {
+            let run_ref = unsafe { &*run };
+            let is_filler = (run_ref.flags & FS_ATTR_RUN_FLAG_FILLER) != 0;
+            let is_sparse = (run_ref.flags & FS_ATTR_RUN_FLAG_SPARSE) != 0;
+            if !is_filler && !is_sparse && run_ref.len > 0 {
+                out.push(IstatDirectBlock {
+                    start: run_ref.addr as u64,
+                    length: run_ref.len as u64,
+                });
+            }
+            run = run_ref.next;
+        }
+        attr = unsafe { (*attr).next };
+    }
+
+    out
 }
 
 pub fn discover_data_source_tree(image_path: &Path) -> Result<DataSourceTree, TskError> {
@@ -458,6 +621,79 @@ impl Fs {
 
         unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
         Ok(out)
+    }
+
+    pub fn read_path_metadata(&self, path: &str) -> Result<PathMetadata, TskError> {
+        let c_path = CString::new(path).map_err(|_| TskError {
+            code: 0,
+            message: "Path contains an interior NUL byte".to_string(),
+        })?;
+
+        let fs_file =
+            unsafe { tsk_sys::tsk_fs_file_open(self.fs, std::ptr::null_mut(), c_path.as_ptr()) };
+        if fs_file.is_null() {
+            return Err(last_tsk_error());
+        }
+
+        let meta = unsafe { (*fs_file).meta };
+        if meta.is_null() {
+            unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+            return Err(TskError {
+                code: 0,
+                message: format!("TSK file metadata is not available for path: {path}"),
+            });
+        }
+
+        let fs_name = unsafe { (*fs_file).name };
+        let file_name_flags = if fs_name.is_null() { 0 } else { unsafe { (*fs_name).flags } };
+        let meta_ref = unsafe { &*meta };
+        let is_dir = meta_ref.type_ == FS_META_TYPE_DIR || meta_ref.type_ == FS_META_TYPE_VIRT_DIR;
+        let name = path
+            .rsplit('/')
+            .find(|part| !part.is_empty())
+            .map(|part| part.to_string())
+            .unwrap_or_else(|| "/".to_string());
+        let metadata = PathMetadata {
+            name,
+            path: path.to_string(),
+            type_label: "File System".to_string(),
+            mime_type: detect_mime_type(path, is_dir),
+            size: meta_ref.size as i64,
+            file_name_allocation: allocation_status_from_flags(
+                file_name_flags,
+                FS_NAME_FLAG_ALLOC,
+                FS_NAME_FLAG_UNALLOC,
+            ),
+            metadata_allocation: allocation_status_from_flags(
+                meta_ref.flags,
+                FS_META_FLAG_ALLOC,
+                FS_META_FLAG_UNALLOC,
+            ),
+            modified: to_optional_unix_time(meta_ref.mtime as i64),
+            accessed: to_optional_unix_time(meta_ref.atime as i64),
+            created: to_optional_unix_time(meta_ref.crtime as i64),
+            changed: to_optional_unix_time(meta_ref.ctime as i64),
+            md5: "Not calculated".to_string(),
+            sha256: "Not calculated".to_string(),
+            hash_lookup_results: "UNKNOWN".to_string(),
+            internal_id: meta_ref.addr as u64,
+            istat_inode: meta_ref.addr as u64,
+            istat_allocated: (meta_ref.flags & FS_META_FLAG_ALLOC) != 0,
+            istat_group: None,
+            istat_generation_id: Some(meta_ref.seq as u64),
+            istat_uid: meta_ref.uid,
+            istat_gid: meta_ref.gid,
+            istat_mode: mode_to_rwx(meta_ref.mode),
+            istat_size: meta_ref.size as i64,
+            istat_num_links: meta_ref.nlink,
+            istat_accessed: to_optional_unix_time(meta_ref.atime as i64),
+            istat_file_modified: to_optional_unix_time(meta_ref.mtime as i64),
+            istat_inode_modified: to_optional_unix_time(meta_ref.ctime as i64),
+            istat_direct_blocks: unsafe { collect_istat_direct_blocks(fs_file) },
+        };
+
+        unsafe { tsk_sys::tsk_fs_file_close(fs_file) };
+        Ok(metadata)
     }
 
     pub fn extract_ascii_strings(
