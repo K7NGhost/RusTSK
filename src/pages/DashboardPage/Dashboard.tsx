@@ -5,10 +5,8 @@ import type {
   DirectorySelection,
   SelectedFile,
 } from "../../features/case-service/dataSourceTypes";
-import AddDataSourceModal from "./components/AddDataSourceModal";
 import ContentViewer from "./components/ContentViewer";
 import ResultViewer from "./components/ResultViewer";
-import TopToolbar from "./components/TopToolbar";
 import TreeViewer from "./components/TreeViewer";
 
 const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
@@ -25,9 +23,7 @@ const ResizeHandle = ({ horizontal = false }: { horizontal?: boolean }) => (
 );
 
 const Dashboard = () => {
-  const { activeCase, dataSources, addDiskImageDataSource } = useCaseContext();
-  const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] =
-    useState(false);
+  const { activeCase, dataSources } = useCaseContext();
   const [selectedDirectory, setSelectedDirectory] =
     useState<DirectorySelection | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<DirectorySelection | null>(
@@ -36,10 +32,7 @@ const Dashboard = () => {
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
   return (
-    <div className="flex h-screen flex-col bg-base-200/40">
-      <TopToolbar
-        onAddDataSourceClick={() => setIsAddDataSourceModalOpen(true)}
-      />
+    <div className="flex h-full flex-col bg-base-200/40">
       {activeCase && (
         <div className="px-3 py-1 text-xs text-base-content/70">
           Active case: <span className="font-semibold">{activeCase.name}</span>{" "}
@@ -102,11 +95,6 @@ const Dashboard = () => {
         </Group>
       </div>
 
-      <AddDataSourceModal
-        isOpen={isAddDataSourceModalOpen}
-        onClose={() => setIsAddDataSourceModalOpen(false)}
-        onAddDiskImage={addDiskImageDataSource}
-      />
     </div>
   );
 };

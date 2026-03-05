@@ -22,7 +22,6 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCaseContext } from "../../features/case-service/context/CaseContext";
-import TopToolbar from "../DashboardPage/components/TopToolbar";
 import reactLogo from "../../assets/react.svg";
 
 type ArtifactKind = "Directory" | "Document" | "Image" | "Archive" | "Binary";
@@ -373,8 +372,7 @@ const ArtifactsPage = () => {
   }, [mediaArtifacts]);
 
   return (
-    <div className="flex h-screen flex-col bg-base-200/40">
-      <TopToolbar />
+    <div className="flex h-full flex-col bg-base-200/40">
       {activeCase && (
         <div className="px-3 py-1 text-xs text-base-content/70">
           Active case: <span className="font-semibold">{activeCase.name}</span>{" "}
